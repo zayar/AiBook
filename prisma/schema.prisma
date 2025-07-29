@@ -1,0 +1,827 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id                   String                @id @default(cuid())
+  name                 String
+  domain               String?               @unique
+  settings             Json?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  accounts             Account[]
+  bankAccounts         BankAccount[]
+  bankTransactions     BankTransaction[]
+  bankReconciliations  BankReconciliation[]  // Added new relation
+  bills                Bill[]
+  books                Book[]
+  customers            Customer[]
+  entries              Entry[]
+  expenses             Expense[]
+  inventoryAdjustments InventoryAdjustment[]
+  inventoryItems       InventoryItem[]
+  invoices             Invoice[]
+  purchases            Purchase[]
+  reconciliations      Reconciliation[]
+  salesOrders          SalesOrder[]
+  taxCalculations      TaxCalculation[]
+  taxRates             TaxRate[]
+  vendors              Vendor[]
+  paymentMethods       PaymentMethod[]
+
+  @@map("tenants")
+}
+
+model Book {
+  id        String    @id @default(cuid())
+  name      String
+  currency  String    @default("USD")
+  tenantId  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  accounts  Account[]
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries   Entry[]
+
+  @@unique([tenantId, name])
+  @@map("books")
+}
+
+model Account {
+  id              String          @id @default(cuid())
+  code            String
+  name            String
+  type            AccountType
+  currency        String          @default("USD")
+  balance         Decimal         @default(0.00000000) @db.Decimal(20, 8)
+  parentId        String?
+  bookId          String
+  tenantId        String
+  isActive        Boolean         @default(true)
+  description     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  book            Book            @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  parent          Account?        @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children        Account[]       @relation("AccountHierarchy")
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccounts    BankAccount[]
+  entries         Entry[]
+  inventoryAssets InventoryItem[] @relation("InventoryAsset")
+  inventoryCOGS   InventoryItem[] @relation("InventoryCOGS")
+  taxRates        TaxRate[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, bookId, code])
+  @@index([tenantId, type])
+  @@index([tenantId, name])
+  @@index([bookId], map: "accounts_bookId_fkey")
+  @@index([parentId], map: "accounts_parentId_fkey")
+  @@map("accounts")
+}
+
+model Entry {
+  id                   String                @id @default(cuid())
+  accountId            String
+  bookId               String
+  tenantId             String
+  amount               Decimal               @db.Decimal(20, 8)
+  currency             String                @default("USD")
+  exchangeRate         Decimal               @default(1.00000000) @db.Decimal(20, 8)
+  type                 EntryType
+  memo                 String?
+  reference            String?
+  metadata             Json?
+  journalId            String
+  postedAt             DateTime              @default(now())
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  bankTransactions     BankTransaction[]
+  account              Account               @relation(fields: [accountId], references: [id])
+  book                 Book                  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inventoryAdjustments InventoryAdjustment[]
+
+  @@index([tenantId, journalId])
+  @@index([tenantId, accountId])
+  @@index([tenantId, postedAt])
+  @@index([accountId], map: "entries_accountId_fkey")
+  @@index([bookId], map: "entries_bookId_fkey")
+  @@map("entries")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  firebaseUid String   @unique
+  name        String?
+  role        UserRole @default(USER)
+  tenantId    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model TransactionCategory {
+  id          String                @id @default(cuid())
+  name        String
+  description String?
+  parentId    String?
+  tenantId    String
+  confidence  Float?
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  parent      TransactionCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    TransactionCategory[] @relation("CategoryHierarchy")
+
+  @@unique([tenantId, name])
+  @@index([parentId], map: "transaction_categories_parentId_fkey")
+  @@map("transaction_categories")
+}
+
+model Customer {
+  id           String       @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  address      Json?
+  taxId        String?
+  paymentTerms Int          @default(30)
+  creditLimit  Decimal?     @db.Decimal(15, 2)
+  tenantId     String
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+  invoices     Invoice[]
+  salesOrders  SalesOrder[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, name])
+  @@map("customers")
+}
+
+model Vendor {
+  id           String     @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  address      Json?
+  taxId        String?
+  paymentTerms Int        @default(30)
+  tenantId     String
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  bills        Bill[]
+  purchases    Purchase[]
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([tenantId, name])
+  @@map("vendors")
+}
+
+model Invoice {
+  id                String           @id @default(cuid())
+  invoiceNumber     String
+  customerId        String
+  tenantId          String
+  issueDate         DateTime         @default(now())
+  dueDate           DateTime
+  subtotal          Decimal          @db.Decimal(15, 2)
+  taxAmount         Decimal          @default(0.00) @db.Decimal(15, 2)
+  discountAmount    Decimal          @default(0.00) @db.Decimal(15, 2)
+  totalAmount       Decimal          @db.Decimal(15, 2)
+  paidAmount        Decimal          @default(0.00) @db.Decimal(15, 2)
+  status            InvoiceStatus    @default(DRAFT)
+  currency          String           @default("USD")
+  exchangeRate      Decimal          @default(1.000000) @db.Decimal(10, 6)
+  notes             String?
+  termsConditions   String?
+  recurring         Boolean          @default(false)
+  recurringInterval String?
+  salesOrderId      String?
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  items             InvoiceItem[]
+  payments          InvoicePayment[]
+  customer          Customer         @relation(fields: [customerId], references: [id])
+  salesOrder        SalesOrder?      @relation(fields: [salesOrderId], references: [id])
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@index([customerId], map: "invoices_customerId_fkey")
+  @@index([salesOrderId], map: "invoices_salesOrderId_fkey")
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id              String         @id @default(cuid())
+  invoiceId       String
+  inventoryItemId String?        // Optional link to InventoryItem
+  description     String
+  quantity        Decimal        @db.Decimal(10, 3)
+  unitPrice       Decimal        @db.Decimal(15, 2)
+  totalPrice      Decimal        @db.Decimal(15, 2)
+  taxRate         Decimal        @default(0.0000) @db.Decimal(5, 4)
+  accountCode     String?
+  tenantId        String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  invoice         Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+
+  @@index([tenantId, invoiceId])
+  @@index([invoiceId], map: "invoice_items_invoiceId_fkey")
+  @@index([inventoryItemId], map: "invoice_items_inventoryItemId_fkey")
+  @@map("invoice_items")
+}
+
+model InvoicePayment {
+  id            String        @id @default(cuid())
+  invoiceId     String
+  amount        Decimal       @db.Decimal(15, 2)
+  paymentDate   DateTime      @default(now())
+  paymentMethod String
+  reference     String?
+  notes         String?
+  tenantId      String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  paymentMethodRecord PaymentMethod? @relation(fields: [paymentMethod], references: [id])
+
+  @@index([tenantId, invoiceId])
+  @@index([invoiceId], map: "invoice_payments_invoiceId_fkey")
+  @@map("invoice_payments")
+}
+
+model PaymentMethod {
+  id                  String   @id @default(cuid())
+  name                String
+  type                String   // cash, bank_transfer, credit_card, debit_card, check, digital_wallet, cryptocurrency, other
+  accountNumber       String?
+  routingNumber       String?  // Added for bank transfers
+  bankName            String?
+  bankIdentifierCode  String?  // SWIFT/IBAN or card type
+  currency            String   @default("MMK")
+  branch              String?  // Bank branch information
+  description         String?  // Additional description
+  isDefault           Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  tenantId            String
+  metadata            Json?    // Store additional payment method specific data
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payments            InvoicePayment[]
+  bankTransactions    BankTransaction[]  // Added relation to bank transactions
+  bankReconciliations BankReconciliation[] // Added relation to bank reconciliations
+  
+  @@unique([tenantId, accountNumber]) // Prevent duplicate account numbers per tenant
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, type])
+  @@map("payment_methods")
+}
+
+model SalesOrder {
+  id           String           @id @default(cuid())
+  orderNumber  String
+  customerId   String
+  tenantId     String
+  orderDate    DateTime         @default(now())
+  deliveryDate DateTime?
+  subtotal     Decimal          @db.Decimal(15, 2)
+  taxAmount    Decimal          @default(0.00) @db.Decimal(15, 2)
+  totalAmount  Decimal          @db.Decimal(15, 2)
+  status       SalesOrderStatus @default(PENDING)
+  currency     String           @default("USD")
+  exchangeRate Decimal          @default(1.000000) @db.Decimal(10, 6)
+  notes        String?
+  approvedBy   String?
+  approvedAt   DateTime?
+  metadata     Json?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  invoices     Invoice[]
+  items        SalesOrderItem[]
+  customer     Customer         @relation(fields: [customerId], references: [id])
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, status])
+  @@index([customerId], map: "sales_orders_customerId_fkey")
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id           String     @id @default(cuid())
+  salesOrderId String
+  description  String
+  quantity     Decimal    @db.Decimal(10, 3)
+  unitPrice    Decimal    @db.Decimal(15, 2)
+  totalPrice   Decimal    @db.Decimal(15, 2)
+  fulfilledQty Decimal    @default(0.000) @db.Decimal(10, 3)
+  status       String     @default("pending")
+  tenantId     String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, salesOrderId])
+  @@index([salesOrderId], map: "sales_order_items_salesOrderId_fkey")
+  @@map("sales_order_items")
+}
+
+model Purchase {
+  id             String         @id @default(cuid())
+  purchaseNumber String
+  vendorId       String?
+  tenantId       String
+  purchaseDate   DateTime       @default(now())
+  deliveryDate   DateTime?
+  subtotal       Decimal        @db.Decimal(15, 2)
+  taxAmount      Decimal        @default(0.00) @db.Decimal(15, 2)
+  totalAmount    Decimal        @db.Decimal(15, 2)
+  status         PurchaseStatus @default(PENDING)
+  currency       String         @default("USD")
+  exchangeRate   Decimal        @default(1.000000) @db.Decimal(10, 6)
+  notes          String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  bills          Bill[]
+  items          PurchaseItem[]
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor         Vendor?        @relation(fields: [vendorId], references: [id])
+
+  @@unique([tenantId, purchaseNumber])
+  @@index([tenantId, status])
+  @@index([vendorId], map: "purchases_vendorId_fkey")
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id          String   @id @default(cuid())
+  purchaseId  String
+  description String
+  quantity    Decimal  @db.Decimal(10, 3)
+  unitPrice   Decimal  @db.Decimal(15, 2)
+  totalPrice  Decimal  @db.Decimal(15, 2)
+  receivedQty Decimal  @default(0.000) @db.Decimal(10, 3)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, purchaseId])
+  @@index([purchaseId], map: "purchase_items_purchaseId_fkey")
+  @@map("purchase_items")
+}
+
+model Bill {
+  id           String        @id @default(cuid())
+  billNumber   String
+  vendorId     String
+  purchaseId   String?
+  tenantId     String
+  billDate     DateTime      @default(now())
+  dueDate      DateTime
+  subtotal     Decimal       @db.Decimal(15, 2)
+  taxAmount    Decimal       @default(0.00) @db.Decimal(15, 2)
+  totalAmount  Decimal       @db.Decimal(15, 2)
+  paidAmount   Decimal       @default(0.00) @db.Decimal(15, 2)
+  status       BillStatus    @default(PENDING)
+  currency     String        @default("USD")
+  exchangeRate Decimal       @default(1.000000) @db.Decimal(10, 6)
+  notes        String?
+  metadata     Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  items        BillItem[]
+  payments     BillPayment[]
+  purchase     Purchase?     @relation(fields: [purchaseId], references: [id])
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor       Vendor        @relation(fields: [vendorId], references: [id])
+
+  @@unique([tenantId, billNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@index([purchaseId], map: "bills_purchaseId_fkey")
+  @@index([vendorId], map: "bills_vendorId_fkey")
+  @@map("bills")
+}
+
+model BillItem {
+  id          String   @id @default(cuid())
+  billId      String
+  description String
+  quantity    Decimal  @db.Decimal(10, 3)
+  unitPrice   Decimal  @db.Decimal(15, 2)
+  totalPrice  Decimal  @db.Decimal(15, 2)
+  taxRate     Decimal  @default(0.0000) @db.Decimal(5, 4)
+  accountCode String?
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  bill        Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, billId])
+  @@index([billId], map: "bill_items_billId_fkey")
+  @@map("bill_items")
+}
+
+model BillPayment {
+  id            String   @id @default(cuid())
+  billId        String
+  amount        Decimal  @db.Decimal(15, 2)
+  paymentDate   DateTime @default(now())
+  paymentMethod String
+  reference     String?
+  notes         String?
+  tenantId      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  bill          Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, billId])
+  @@index([billId], map: "bill_payments_billId_fkey")
+  @@map("bill_payments")
+}
+
+model Expense {
+  id          String        @id @default(cuid())
+  description String
+  amount      Decimal       @db.Decimal(15, 2)
+  expenseDate DateTime      @default(now())
+  category    String
+  subcategory String?
+  vendor      String?
+  accountCode String?
+  receiptUrl  String?
+  billable    Boolean       @default(false)
+  customerId  String?
+  projectId   String?
+  status      ExpenseStatus @default(PENDING)
+  approvedBy  String?
+  approvedAt  DateTime?
+  tenantId    String
+  userId      String
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  customer    Customer?     @relation(fields: [customerId], references: [id])
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, expenseDate])
+  @@index([customerId], map: "expenses_customerId_fkey")
+  @@map("expenses")
+}
+
+model BankAccount {
+  id              String            @id @default(cuid())
+  name            String
+  accountNumber   String
+  routingNumber   String?
+  bankName        String
+  accountType     BankAccountType
+  currency        String            @default("USD")
+  balance         Decimal           @db.Decimal(15, 2)
+  accountId       String
+  tenantId        String
+  isActive        Boolean           @default(true)
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  account         Account           @relation(fields: [accountId], references: [id])
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions    BankTransaction[]
+  reconciliations Reconciliation[]
+
+  @@unique([tenantId, accountNumber])
+  @@index([tenantId, accountType])
+  @@index([accountId], map: "bank_accounts_accountId_fkey")
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id               String          @id @default(cuid())
+  bankAccountId    String?         // Made optional to support PaymentMethod
+  paymentMethodId  String?         // Added relation to PaymentMethod
+  description      String
+  amount           Decimal         @db.Decimal(15, 2)
+  transactionDate  DateTime
+  type             TransactionType
+  reference        String?
+  balance          Decimal?        @db.Decimal(15, 2)
+  category         String?
+  status           String          @default("pending") // pending, cleared, cancelled
+  reconciled       Boolean         @default(false)     // Added for reconciliation
+  reconciledAt     DateTime?       // When it was reconciled
+  matched          Boolean         @default(false)
+  entryId          String?
+  tenantId         String
+  metadata         Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  
+  // Relations
+  bankAccount      BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  paymentMethod    PaymentMethod?  @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
+  entry            Entry?          @relation(fields: [entryId], references: [id])
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, bankAccountId])
+  @@index([tenantId, paymentMethodId])
+  @@index([tenantId, transactionDate])
+  @@index([tenantId, matched])
+  @@index([tenantId, reconciled])
+  @@index([tenantId, status])
+  @@index([bankAccountId], map: "bank_transactions_bankAccountId_fkey")
+  @@index([paymentMethodId], map: "bank_transactions_paymentMethodId_fkey")
+  @@index([entryId], map: "bank_transactions_entryId_fkey")
+  @@map("bank_transactions")
+}
+
+model Reconciliation {
+  id               String               @id @default(cuid())
+  bankAccountId    String
+  periodStart      DateTime
+  periodEnd        DateTime
+  statementBalance Decimal              @db.Decimal(15, 2)
+  bookBalance      Decimal              @db.Decimal(15, 2)
+  difference       Decimal              @db.Decimal(15, 2)
+  status           ReconciliationStatus @default(IN_PROGRESS)
+  reconciledBy     String?
+  reconciledAt     DateTime?
+  notes            String?
+  tenantId         String
+  metadata         Json?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  bankAccount      BankAccount          @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, bankAccountId])
+  @@index([tenantId, status])
+  @@index([bankAccountId], map: "reconciliations_bankAccountId_fkey")
+  @@map("reconciliations")
+}
+
+// New model for PaymentMethod-based reconciliation
+model BankReconciliation {
+  id                     String               @id @default(cuid())
+  paymentMethodId        String
+  reconciliationDate     DateTime
+  statementBalance       Decimal              @db.Decimal(15, 2)
+  bookBalance            Decimal?             @db.Decimal(15, 2)
+  difference             Decimal?             @db.Decimal(15, 2)
+  reconciledTransactions Int                  @default(0)
+  status                 ReconciliationStatus @default(IN_PROGRESS)
+  reconciledBy           String?
+  notes                  String?
+  tenantId               String
+  metadata               Json?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  
+  // Relations
+  paymentMethod          PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, paymentMethodId])
+  @@index([tenantId, status])
+  @@index([tenantId, reconciliationDate])
+  @@index([paymentMethodId], map: "bank_reconciliations_paymentMethodId_fkey")
+  @@map("bank_reconciliations")
+}
+
+model InventoryItem {
+  id              String                @id @default(cuid())
+  sku             String
+  name            String
+  description     String?
+  category        String?
+  unitOfMeasure   String                @default("each")
+  unitCost        Decimal               @db.Decimal(15, 2)
+  unitPrice       Decimal               @db.Decimal(15, 2)
+  quantityOnHand  Decimal               @default(0.000) @db.Decimal(10, 3)
+  reorderLevel    Decimal?              @db.Decimal(10, 3)
+  reorderQuantity Decimal?              @db.Decimal(10, 3)
+  assetAccountId  String
+  cogsAccountId   String
+  isActive        Boolean               @default(true)
+  tenantId        String
+  metadata        Json?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  adjustments     InventoryAdjustment[]
+  invoiceItems    InvoiceItem[]         // Items can be used in multiple invoices
+  assetAccount    Account               @relation("InventoryAsset", fields: [assetAccountId], references: [id])
+  cogsAccount     Account               @relation("InventoryCOGS", fields: [cogsAccountId], references: [id])
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, category])
+  @@index([assetAccountId], map: "inventory_items_assetAccountId_fkey")
+  @@index([cogsAccountId], map: "inventory_items_cogsAccountId_fkey")
+  @@map("inventory_items")
+}
+
+model InventoryAdjustment {
+  id             String         @id @default(cuid())
+  itemId         String
+  adjustmentType AdjustmentType
+  quantity       Decimal        @db.Decimal(10, 3)
+  unitCost       Decimal        @db.Decimal(15, 2)
+  totalValue     Decimal        @db.Decimal(15, 2)
+  reason         String
+  reference      String?
+  adjustedBy     String
+  tenantId       String
+  notes          String?
+  entryId        String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  entry          Entry?         @relation(fields: [entryId], references: [id])
+  item           InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, itemId])
+  @@index([tenantId, adjustmentType])
+  @@index([entryId], map: "inventory_adjustments_entryId_fkey")
+  @@index([itemId], map: "inventory_adjustments_itemId_fkey")
+  @@map("inventory_adjustments")
+}
+
+model TaxRate {
+  id            String           @id @default(cuid())
+  name          String
+  rate          Decimal          @db.Decimal(8, 5)
+  jurisdiction  String
+  taxType       TaxType
+  accountId     String
+  effectiveDate DateTime
+  expiryDate    DateTime?
+  isActive      Boolean          @default(true)
+  tenantId      String
+  metadata      Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  calculations  TaxCalculation[]
+  account       Account          @relation(fields: [accountId], references: [id])
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name, jurisdiction])
+  @@index([tenantId, taxType])
+  @@index([accountId], map: "tax_rates_accountId_fkey")
+  @@map("tax_rates")
+}
+
+model TaxCalculation {
+  id            String   @id @default(cuid())
+  documentType  String
+  documentId    String
+  taxRateId     String
+  taxableAmount Decimal  @db.Decimal(15, 2)
+  taxAmount     Decimal  @db.Decimal(15, 2)
+  tenantId      String
+  calculatedAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  taxRate       TaxRate  @relation(fields: [taxRateId], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, documentType, documentId])
+  @@index([taxRateId], map: "tax_calculations_taxRateId_fkey")
+  @@map("tax_calculations")
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+  VIEWER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+enum SalesOrderStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  PARTIALLY_FULFILLED
+  FULFILLED
+  CANCELLED
+  ON_HOLD
+}
+
+enum PurchaseStatus {
+  PENDING
+  APPROVED
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum BillStatus {
+  PENDING
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REIMBURSED
+}
+
+enum BankAccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  LINE_OF_CREDIT
+  INVESTMENT
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER
+  FEE
+  INTEREST
+  ADJUSTMENT
+  PAYMENT     // Added for invoice payments
+  REFUND      // Added for refunds
+  CHARGEBACK  // Added for chargebacks
+}
+
+enum ReconciliationStatus {
+  IN_PROGRESS
+  COMPLETED
+  DISCREPANCY
+  CANCELLED
+}
+
+enum AdjustmentType {
+  INCREASE
+  DECREASE
+  RECOUNT
+  TRANSFER
+}
+
+enum TaxType {
+  SALES
+  VAT
+  INCOME
+  PROPERTY
+  EXCISE
+  CUSTOMS
+}

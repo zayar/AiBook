@@ -1,0 +1,21 @@
+import { Router } from 'express';
+import { 
+  getAllCustomers, 
+  getCustomerById, 
+  createCustomer, 
+  updateCustomer, 
+  deleteCustomer,
+  toggleCustomerStatus 
+} from '@/controllers/customerController';
+
+const router = Router();
+
+// Customer CRUD routes
+router.get('/', getAllCustomers);
+router.get('/:id', getCustomerById);
+router.post('/', createCustomer);
+router.put('/:id', updateCustomer);
+router.delete('/:id', deleteCustomer);
+router.patch('/:id/status', toggleCustomerStatus);
+
+export default router; 
