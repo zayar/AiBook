@@ -24,6 +24,9 @@ import {
   Settings
 } from 'lucide-react';
 import AddBankModal from '@/components/AddBankModal';
+import { useRouter } from 'next/navigation';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 interface BankAccount {
   id: string;
@@ -56,6 +59,7 @@ interface BankTransaction {
 }
 
 const BankingPage: React.FC = () => {
+  const router = useRouter();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>('all');
@@ -65,63 +69,49 @@ const BankingPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [loading, setLoading] = useState(true);
 
-  // Mock data - replace with API calls
-  useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-              setBankAccounts([
-          {
-            id: '1',
-            name: 'A Bank',
-            accountNumber: 'xxxx5423',
-            bankName: 'A Bank',
-            bankIdentifierCode: 'ABANK001',
-            type: 'bank',
-            currency: 'MMK',
-            branch: 'Head Office',
-            description: 'Primary business account',
-            balance: 77349504.10,
-            reconciledBalance: 75000000.00,
-            unreconciledTransactions: 15,
-            lastReconciled: '2025-07-25',
-            isDefault: true,
-            isActive: true
-          },
-          {
-            id: '2',
-            name: 'AYA Pay',
-            accountNumber: 'xxxx8998',
-            bankName: 'AYA Bank',
-            bankIdentifierCode: 'AYABANK01',
-            type: 'bank',
-            currency: 'MMK',
-            branch: 'Yangon Branch',
-            description: 'Digital payment account',
-            balance: 288000.00,
-            reconciledBalance: 288000.00,
-            unreconciledTransactions: 0,
-            lastReconciled: '2025-07-29',
-            isDefault: false,
-            isActive: true
-          },
-          {
-            id: '3',
-            name: 'CB Master Card',
-            accountNumber: 'xxxx8356',
-            bankName: 'CB Bank',
-            bankIdentifierCode: 'MasterCard',
-            type: 'credit_card',
-            currency: 'MMK',
-            description: 'Corporate credit card',
-            balance: -123629.04,
-            reconciledBalance: -100000.00,
-            unreconciledTransactions: 8,
-            lastReconciled: '2025-07-20',
-            isDefault: false,
-            isActive: true
-          }
-        ]);
+    // Load banking data from API
+  const loadBankingData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load payment methods (bank accounts)
+      const bankResponse = await fetch(`${API_URL}/banking/payment-methods`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-ID': 'default'
+        }
+      });
 
+      if (bankResponse.ok) {
+        const bankData = await bankResponse.json();
+        
+        // Transform payment methods to bank accounts format
+        const transformedAccounts: BankAccount[] = bankData.map((pm: any) => ({
+          id: pm.id,
+          name: pm.name,
+          accountNumber: pm.accountNumber || 'N/A',
+          bankName: pm.bankName || 'N/A',
+          bankIdentifierCode: pm.bankIdentifierCode || pm.routingNumber || '',
+          type: pm.type === 'credit_card' ? 'credit_card' : 'bank',
+          currency: pm.currency || 'MMK',
+          branch: pm.branch || '',
+          description: pm.description || '',
+          balance: pm.balance || 0,
+          reconciledBalance: pm.reconciledBalance || 0,
+          unreconciledTransactions: pm.unreconciledTransactions || 0,
+          lastReconciled: pm.lastReconciled || null,
+          isDefault: pm.isDefault || false,
+          isActive: pm.isActive !== false
+        }));
+        
+        setBankAccounts(transformedAccounts);
+      } else {
+        console.error('Failed to load bank accounts');
+        // Fallback to empty array
+        setBankAccounts([]);
+      }
+
+      // For now, use mock transactions until bank transactions API is implemented
       setTransactions([
         {
           id: '1',
@@ -158,8 +148,17 @@ const BankingPage: React.FC = () => {
         }
       ]);
 
+    } catch (error) {
+      console.error('Error loading banking data:', error);
+      setBankAccounts([]);
+      setTransactions([]);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    loadBankingData();
   }, []);
 
   const formatCurrency = (amount: number, currency: string = 'MMK') => {
@@ -199,39 +198,76 @@ const BankingPage: React.FC = () => {
 
   const handleSaveBank = async (bank: any) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-      
       if (editingBank) {
         // Update existing bank
-        const response = await fetch(`${apiUrl}/banking/payment-methods/${editingBank.id}`, {
+        const response = await fetch(`${API_URL}/banking/payment-methods/${editingBank.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'X-Tenant-ID': 'dev-tenant'
+            'X-Tenant-ID': 'default'
           },
           body: JSON.stringify(bank)
         });
         
         if (response.ok) {
           const result = await response.json();
-          setBankAccounts(prev => prev.map(b => b.id === editingBank.id ? result.paymentMethod : b));
+          // Transform the response to match BankAccount interface
+          const transformedAccount: BankAccount = {
+            id: result.id,
+            name: result.name,
+            accountNumber: result.accountNumber || 'N/A',
+            bankName: result.bankName || 'N/A',
+            bankIdentifierCode: result.bankIdentifierCode || result.routingNumber || '',
+            type: result.type === 'credit_card' ? 'credit_card' : 'bank',
+            currency: result.currency || 'MMK',
+            branch: result.branch || '',
+            description: result.description || '',
+            balance: result.balance || 0,
+            reconciledBalance: result.reconciledBalance || 0,
+            unreconciledTransactions: result.unreconciledTransactions || 0,
+            lastReconciled: result.lastReconciled || null,
+            isDefault: result.isDefault || false,
+            isActive: result.isActive !== false
+          };
+          setBankAccounts(prev => prev.map(b => b.id === editingBank.id ? transformedAccount : b));
         }
       } else {
         // Add new bank
-        const response = await fetch(`${apiUrl}/banking/payment-methods`, {
+        const response = await fetch(`${API_URL}/banking/payment-methods`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Tenant-ID': 'dev-tenant'
+            'X-Tenant-ID': 'default'
           },
           body: JSON.stringify(bank)
         });
         
         if (response.ok) {
           const result = await response.json();
-          setBankAccounts(prev => [...prev, result.paymentMethod]);
+          // Transform the response to match BankAccount interface
+          const transformedAccount: BankAccount = {
+            id: result.id,
+            name: result.name,
+            accountNumber: result.accountNumber || 'N/A',
+            bankName: result.bankName || 'N/A',
+            bankIdentifierCode: result.bankIdentifierCode || result.routingNumber || '',
+            type: result.type === 'credit_card' ? 'credit_card' : 'bank',
+            currency: result.currency || 'MMK',
+            branch: result.branch || '',
+            description: result.description || '',
+            balance: result.balance || 0,
+            reconciledBalance: result.reconciledBalance || 0,
+            unreconciledTransactions: result.unreconciledTransactions || 0,
+            lastReconciled: result.lastReconciled || null,
+            isDefault: result.isDefault || false,
+            isActive: result.isActive !== false
+          };
+          setBankAccounts(prev => [...prev, transformedAccount]);
         }
       }
+      
+      // Reload data to ensure consistency
+      await loadBankingData();
     } catch (error) {
       console.error('Error saving bank:', error);
     }
@@ -413,16 +449,24 @@ const BankingPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center space-x-2">
-                        <button className="text-blue-600 hover:text-blue-900">
+                        <button 
+                          onClick={() => router.push(`/banking/${account.id}`)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="View Details"
+                        >
                           <Eye className="h-4 w-4" />
                         </button>
                         <button 
                           onClick={() => handleEditBank(account)}
                           className="text-gray-600 hover:text-gray-900"
+                          title="Edit Account"
                         >
                           <Edit3 className="h-4 w-4" />
                         </button>
-                        <button className="text-gray-600 hover:text-gray-900">
+                        <button 
+                          className="text-gray-600 hover:text-gray-900"
+                          title="Settings"
+                        >
                           <Settings className="h-4 w-4" />
                         </button>
                       </div>

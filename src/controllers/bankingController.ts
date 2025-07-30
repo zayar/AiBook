@@ -280,6 +280,160 @@ class BankingController {
       res.status(500).json({ error: 'Failed to fetch banking overview' });
     }
   }
+
+  // Get bank transactions for a specific payment method
+  static async getBankTransactions(req: Request, res: Response) {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant ID is required' });
+      }
+
+      const { paymentMethodId } = req.params;
+      const { page = '1', limit = '20', status, reconciled } = req.query;
+
+      const skip = (Number(page) - 1) * Number(limit);
+      
+      const where: any = { 
+        tenantId,
+        paymentMethodId
+      };
+      
+      if (status && status !== 'all') {
+        where.status = status;
+      }
+      
+      if (reconciled !== undefined) {
+        where.reconciled = reconciled === 'true';
+      }
+
+      const [transactions, totalCount] = await Promise.all([
+        prisma.bankTransaction.findMany({
+          where,
+          orderBy: { transactionDate: 'desc' },
+          skip,
+          take: Number(limit)
+        }),
+        prisma.bankTransaction.count({ where })
+      ]);
+
+      res.json({
+        transactions,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total: totalCount,
+          pages: Math.ceil(totalCount / Number(limit))
+        }
+      });
+    } catch (error) {
+      console.error('Get bank transactions error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Reconcile bank transactions
+  static async reconcileTransactions(req: Request, res: Response) {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant ID is required' });
+      }
+
+      const { paymentMethodId } = req.params;
+      const { transactionIds, statementBalance, reconciliationDate } = req.body;
+
+      if (!transactionIds || !Array.isArray(transactionIds)) {
+        return res.status(400).json({ error: 'Transaction IDs are required' });
+      }
+
+      // Start a transaction
+      const result = await prisma.$transaction(async (tx) => {
+        // Update selected transactions as reconciled
+        await tx.bankTransaction.updateMany({
+          where: {
+            id: { in: transactionIds },
+            tenantId,
+            paymentMethodId
+          },
+          data: {
+            reconciled: true,
+            reconciledAt: new Date(reconciliationDate || new Date()),
+            status: 'cleared'
+          }
+        });
+
+        // Create reconciliation record
+        const reconciliation = await tx.bankReconciliation.create({
+          data: {
+            tenantId,
+            paymentMethodId,
+            reconciliationDate: new Date(reconciliationDate || new Date()),
+            statementBalance: statementBalance || 0,
+            reconciledTransactions: transactionIds.length,
+            status: 'completed',
+            notes: `Reconciled ${transactionIds.length} transactions`
+          }
+        });
+
+        return { reconciliation };
+      });
+
+      res.json({
+        message: 'Transactions reconciled successfully',
+        reconciliation: result.reconciliation,
+        reconciledCount: transactionIds.length
+      });
+    } catch (error) {
+      console.error('Reconcile transactions error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Get reconciliation history for a payment method
+  static async getReconciliationHistory(req: Request, res: Response) {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant ID is required' });
+      }
+
+      const { paymentMethodId } = req.params;
+      const { page = '1', limit = '10' } = req.query;
+
+      const skip = (Number(page) - 1) * Number(limit);
+
+      const [reconciliations, totalCount] = await Promise.all([
+        prisma.bankReconciliation.findMany({
+          where: { tenantId, paymentMethodId },
+          orderBy: { reconciliationDate: 'desc' },
+          skip,
+          take: Number(limit),
+          include: {
+            paymentMethod: {
+              select: { name: true, accountNumber: true }
+            }
+          }
+        }),
+        prisma.bankReconciliation.count({ 
+          where: { tenantId, paymentMethodId }
+        })
+      ]);
+
+      res.json({
+        reconciliations,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total: totalCount,
+          pages: Math.ceil(totalCount / Number(limit))
+        }
+      });
+    } catch (error) {
+      console.error('Get reconciliation history error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
 }
 
 export default BankingController; 

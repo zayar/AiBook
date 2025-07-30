@@ -10,4 +10,9 @@ router.post('/payment-methods', BankingController.createPaymentMethod);
 router.put('/payment-methods/:id', BankingController.updatePaymentMethod);
 router.delete('/payment-methods/:id', BankingController.deletePaymentMethod);
 
+// Bank transaction and reconciliation routes
+router.get('/payment-methods/:paymentMethodId/transactions', BankingController.getBankTransactions);
+router.post('/payment-methods/:paymentMethodId/reconcile', BankingController.reconcileTransactions);
+router.get('/payment-methods/:paymentMethodId/reconciliation-history', BankingController.getReconciliationHistory);
+
 export default router; 
