@@ -86,7 +86,7 @@ const BankingPage: React.FC = () => {
         const bankData = await bankResponse.json();
         
         // Transform payment methods to bank accounts format
-        const transformedAccounts: BankAccount[] = bankData.map((pm: any) => ({
+        const transformedAccounts: BankAccount[] = bankData.paymentMethods.map((pm: any) => ({
           id: pm.id,
           name: pm.name,
           accountNumber: pm.accountNumber || 'N/A',
@@ -212,22 +212,23 @@ const BankingPage: React.FC = () => {
         if (response.ok) {
           const result = await response.json();
           // Transform the response to match BankAccount interface
+          const paymentMethod = result.paymentMethod || result;
           const transformedAccount: BankAccount = {
-            id: result.id,
-            name: result.name,
-            accountNumber: result.accountNumber || 'N/A',
-            bankName: result.bankName || 'N/A',
-            bankIdentifierCode: result.bankIdentifierCode || result.routingNumber || '',
-            type: result.type === 'credit_card' ? 'credit_card' : 'bank',
-            currency: result.currency || 'MMK',
-            branch: result.branch || '',
-            description: result.description || '',
-            balance: result.balance || 0,
-            reconciledBalance: result.reconciledBalance || 0,
-            unreconciledTransactions: result.unreconciledTransactions || 0,
-            lastReconciled: result.lastReconciled || null,
-            isDefault: result.isDefault || false,
-            isActive: result.isActive !== false
+            id: paymentMethod.id,
+            name: paymentMethod.name,
+            accountNumber: paymentMethod.accountNumber || 'N/A',
+            bankName: paymentMethod.bankName || 'N/A',
+            bankIdentifierCode: paymentMethod.bankIdentifierCode || paymentMethod.routingNumber || '',
+            type: paymentMethod.type === 'credit_card' ? 'credit_card' : 'bank',
+            currency: paymentMethod.currency || 'MMK',
+            branch: paymentMethod.branch || '',
+            description: paymentMethod.description || '',
+            balance: paymentMethod.balance || 0,
+            reconciledBalance: paymentMethod.reconciledBalance || 0,
+            unreconciledTransactions: paymentMethod.unreconciledTransactions || 0,
+            lastReconciled: paymentMethod.lastReconciled || null,
+            isDefault: paymentMethod.isDefault || false,
+            isActive: paymentMethod.isActive !== false
           };
           setBankAccounts(prev => prev.map(b => b.id === editingBank.id ? transformedAccount : b));
         }
@@ -245,22 +246,23 @@ const BankingPage: React.FC = () => {
         if (response.ok) {
           const result = await response.json();
           // Transform the response to match BankAccount interface
+          const paymentMethod = result.paymentMethod || result;
           const transformedAccount: BankAccount = {
-            id: result.id,
-            name: result.name,
-            accountNumber: result.accountNumber || 'N/A',
-            bankName: result.bankName || 'N/A',
-            bankIdentifierCode: result.bankIdentifierCode || result.routingNumber || '',
-            type: result.type === 'credit_card' ? 'credit_card' : 'bank',
-            currency: result.currency || 'MMK',
-            branch: result.branch || '',
-            description: result.description || '',
-            balance: result.balance || 0,
-            reconciledBalance: result.reconciledBalance || 0,
-            unreconciledTransactions: result.unreconciledTransactions || 0,
-            lastReconciled: result.lastReconciled || null,
-            isDefault: result.isDefault || false,
-            isActive: result.isActive !== false
+            id: paymentMethod.id,
+            name: paymentMethod.name,
+            accountNumber: paymentMethod.accountNumber || 'N/A',
+            bankName: paymentMethod.bankName || 'N/A',
+            bankIdentifierCode: paymentMethod.bankIdentifierCode || paymentMethod.routingNumber || '',
+            type: paymentMethod.type === 'credit_card' ? 'credit_card' : 'bank',
+            currency: paymentMethod.currency || 'MMK',
+            branch: paymentMethod.branch || '',
+            description: paymentMethod.description || '',
+            balance: paymentMethod.balance || 0,
+            reconciledBalance: paymentMethod.reconciledBalance || 0,
+            unreconciledTransactions: paymentMethod.unreconciledTransactions || 0,
+            lastReconciled: paymentMethod.lastReconciled || null,
+            isDefault: paymentMethod.isDefault || false,
+            isActive: paymentMethod.isActive !== false
           };
           setBankAccounts(prev => [...prev, transformedAccount]);
         }

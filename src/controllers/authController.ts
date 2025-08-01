@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import firebaseService from '@/services/firebaseService';
+import firebaseService from '../services/firebaseService';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();

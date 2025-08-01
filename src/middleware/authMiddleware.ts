@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import firebaseService from '@/services/firebaseService';
+import { FirebaseService } from '../services/firebaseService';
+
+const firebaseService = FirebaseService.getInstance();
 import { AppError } from './errorHandler';
 
 export const authMiddleware = async (

@@ -33,6 +33,8 @@ model Tenant {
   taxRates             TaxRate[]
   vendors              Vendor[]
   paymentMethods       PaymentMethod[]
+  paymentsReceived     PaymentReceived[]
+  salespeople          Salesperson[]
 
   @@map("tenants")
 }
@@ -70,11 +72,12 @@ model Account {
   parent          Account?        @relation("AccountHierarchy", fields: [parentId], references: [id])
   children        Account[]       @relation("AccountHierarchy")
   tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bankAccounts    BankAccount[]
-  entries         Entry[]
-  inventoryAssets InventoryItem[] @relation("InventoryAsset")
-  inventoryCOGS   InventoryItem[] @relation("InventoryCOGS")
-  taxRates        TaxRate[]
+  bankAccounts         BankAccount[]
+  entries              Entry[]
+  inventoryAssets      InventoryItem[] @relation("InventoryAsset")
+  inventoryCOGS        InventoryItem[] @relation("InventoryCOGS")
+  taxRates             TaxRate[]
+  bankTransactions     BankTransaction[] @relation("BankTransactionContraAccount")
 
   @@unique([tenantId, code])
   @@unique([tenantId, bookId, code])
@@ -106,6 +109,8 @@ model Entry {
   book                 Book                  @relation(fields: [bookId], references: [id], onDelete: Cascade)
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   inventoryAdjustments InventoryAdjustment[]
+  paymentReceived      PaymentReceived?      @relation("PaymentReceivedJournalEntries", fields: [paymentReceivedId], references: [id])
+  paymentReceivedId    String?
 
   @@index([tenantId, journalId])
   @@index([tenantId, accountId])
@@ -161,10 +166,11 @@ model Customer {
   isActive     Boolean      @default(true)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  expenses     Expense[]
-  invoices     Invoice[]
-  salesOrders  SalesOrder[]
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expenses         Expense[]
+  invoices         Invoice[]
+  salesOrders      SalesOrder[]
+  paymentsReceived PaymentReceived[]
 
   @@unique([tenantId, email])
   @@index([tenantId, name])
@@ -192,10 +198,36 @@ model Vendor {
   @@map("vendors")
 }
 
+model Salesperson {
+  id           String       @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  department   String?
+  position     String?
+  commission   Decimal?     @db.Decimal(5, 4) // Commission percentage (e.g., 0.05 for 5%)
+  target       Decimal?     @db.Decimal(15, 2) // Monthly/quarterly sales target
+  territory    String?      // Sales territory
+  manager      String?      // Manager name or ID
+  tenantId     String
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  invoices     Invoice[]
+  salesOrders  SalesOrder[]
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("salespeople")
+}
+
 model Invoice {
   id                String           @id @default(cuid())
   invoiceNumber     String
   customerId        String
+  salespersonId     String?
   tenantId          String
   issueDate         DateTime         @default(now())
   dueDate           DateTime
@@ -218,6 +250,7 @@ model Invoice {
   items             InvoiceItem[]
   payments          InvoicePayment[]
   customer          Customer         @relation(fields: [customerId], references: [id])
+  salesperson       Salesperson?     @relation(fields: [salespersonId], references: [id])
   salesOrder        SalesOrder?      @relation(fields: [salesOrderId], references: [id])
   tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -225,6 +258,7 @@ model Invoice {
   @@index([tenantId, status])
   @@index([tenantId, dueDate])
   @@index([customerId], map: "invoices_customerId_fkey")
+  @@index([salespersonId], map: "invoices_salespersonId_fkey")
   @@index([salesOrderId], map: "invoices_salesOrderId_fkey")
   @@map("invoices")
 }
@@ -252,20 +286,29 @@ model InvoiceItem {
 }
 
 model InvoicePayment {
-  id            String        @id @default(cuid())
-  invoiceId     String
-  amount        Decimal       @db.Decimal(15, 2)
-  paymentDate   DateTime      @default(now())
-  paymentMethod String
-  reference     String?
-  notes         String?
-  tenantId      String
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  invoice       Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  paymentMethodRecord PaymentMethod? @relation(fields: [paymentMethod], references: [id])
+  id                  String             @id @default(cuid())
+  invoiceId           String
+  amount              Decimal            @db.Decimal(15, 2)
+  paymentDate         DateTime           @default(now())
+  paymentMethod       String?
+  reference           String?
+  notes               String?
+  tenantId            String
+  
+  // New fields for PaymentReceived integration
+  paymentReceivedId   String?
+  amountAllocated     Decimal?           @db.Decimal(15, 2)
+  
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  
+  // Relations
+  invoice             Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  paymentMethodRecord PaymentMethod?     @relation(fields: [paymentMethod], references: [id])
+  paymentReceived     PaymentReceived?   @relation(fields: [paymentReceivedId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, invoiceId])
+  @@index([tenantId, paymentReceivedId])
   @@index([invoiceId], map: "invoice_payments_invoiceId_fkey")
   @@map("invoice_payments")
 }
@@ -305,6 +348,7 @@ model SalesOrder {
   id           String           @id @default(cuid())
   orderNumber  String
   customerId   String
+  salespersonId String?
   tenantId     String
   orderDate    DateTime         @default(now())
   deliveryDate DateTime?
@@ -323,11 +367,13 @@ model SalesOrder {
   invoices     Invoice[]
   items        SalesOrderItem[]
   customer     Customer         @relation(fields: [customerId], references: [id])
+  salesperson  Salesperson?     @relation(fields: [salespersonId], references: [id])
   tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, status])
   @@index([customerId], map: "sales_orders_customerId_fkey")
+  @@index([salespersonId], map: "sales_orders_salespersonId_fkey")
   @@map("sales_orders")
 }
 
@@ -542,6 +588,22 @@ model BankTransaction {
   entryId          String?
   tenantId         String
   metadata         Json?
+  
+  // Enhanced double-entry accounting fields
+  debitAmount      Decimal?        @db.Decimal(15, 2) // Amount debited
+  creditAmount     Decimal?        @db.Decimal(15, 2) // Amount credited
+  runningBalance   Decimal         @db.Decimal(15, 2) // Running balance after this transaction
+  transactionNumber String?        // Sequential transaction number for easy reference
+  
+  // Journal entry tracking
+
+  contraAccountId  String?         // The other account in the double-entry (e.g., cash, accounts receivable)
+  
+  // Bank reconciliation fields
+  statementDate    DateTime?       // Date on bank statement (may differ from transaction date)
+  bankFee          Decimal?        @db.Decimal(15, 2) // Any bank fees associated
+  exchangeRate     Decimal?        @db.Decimal(10, 6) // For foreign currency transactions
+  
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   
@@ -551,15 +613,20 @@ model BankTransaction {
   entry            Entry?          @relation(fields: [entryId], references: [id])
   tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  contraAccount    Account?        @relation("BankTransactionContraAccount", fields: [contraAccountId], references: [id])
+
   @@index([tenantId, bankAccountId])
   @@index([tenantId, paymentMethodId])
   @@index([tenantId, transactionDate])
   @@index([tenantId, matched])
   @@index([tenantId, reconciled])
   @@index([tenantId, status])
+  @@index([tenantId, runningBalance])
+  @@index([tenantId, transactionNumber])
   @@index([bankAccountId], map: "bank_transactions_bankAccountId_fkey")
   @@index([paymentMethodId], map: "bank_transactions_paymentMethodId_fkey")
   @@index([entryId], map: "bank_transactions_entryId_fkey")
+  @@index([contraAccountId], map: "bank_transactions_contraAccountId_fkey")
   @@map("bank_transactions")
 }
 
@@ -825,3 +892,92 @@ enum TaxType {
   EXCISE
   CUSTOMS
 }
+
+enum PaymentReceivedStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentReceivedMode {
+  CASH
+  BANK_TRANSFER
+  CHECK
+  CREDIT_CARD
+  DEBIT_CARD
+  MOBILE_PAYMENT
+  ONLINE_TRANSFER
+  OTHER
+}
+
+enum DepositType {
+  CASH_IN_HAND
+  BANK_DEPOSIT
+  PETTY_CASH
+  UNDEPOSITED_FUNDS
+}
+
+model PaymentReceived {
+  id                  String                @id @default(cuid())
+  paymentNumber       String                @unique
+  customerId          String?
+  customerName        String?               // Allow manual customer name entry
+  tenantId            String
+  branchId            String?               // For multi-branch support
+  
+  // Payment Details
+  amount              Decimal               @db.Decimal(15, 2)
+  currency            String                @default("MMK")
+  exchangeRate        Decimal               @default(1.000000) @db.Decimal(10, 6)
+  paymentDate         DateTime              @default(now())
+  paymentMode         PaymentReceivedMode   @default(CASH)
+  depositType         DepositType           @default(CASH_IN_HAND)
+  
+  // Bank Details (if applicable)
+  bankCharges         Decimal?              @db.Decimal(15, 2)
+  referenceNumber     String?
+  
+  // Tax Information
+  taxDeducted         Boolean               @default(false)
+  taxAmount           Decimal?              @db.Decimal(15, 2)
+  
+  // Status and Workflow
+  status              PaymentReceivedStatus @default(COMPLETED)
+  
+  // Accounting
+  isReconciled        Boolean               @default(false)
+  reconciledAt        DateTime?
+  reconciledBy        String?
+  
+  // Additional Information
+  notes               String?               @db.Text
+  internalNotes       String?               @db.Text
+  attachments         Json?                 // Store file metadata
+  
+  // Email notification
+  sendThankYouEmail   Boolean               @default(false)
+  emailSent           Boolean               @default(false)
+  emailSentAt         DateTime?
+  
+  // Audit fields
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  createdBy           String?
+  updatedBy           String?
+  
+  // Relations
+  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer            Customer?             @relation(fields: [customerId], references: [id])
+  invoicePayments     InvoicePayment[]      // Link to invoices this payment applies to
+  journalEntries      Entry[]               @relation("PaymentReceivedJournalEntries")
+  
+  @@unique([tenantId, paymentNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, paymentDate])
+  @@index([tenantId, customerId])
+  @@index([tenantId, paymentMode])
+  @@map("payments_received")
+}
+
+

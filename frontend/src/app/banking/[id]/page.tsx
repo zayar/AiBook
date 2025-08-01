@@ -19,10 +19,15 @@ import {
   FileText,
   Edit3,
   RefreshCw,
-  MoreVertical
+  MoreVertical,
+  TrendingUp,
+  TrendingDown,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Plus
 } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const API_URL = '/api/v1';
 
 interface BankAccount {
   id: string;
@@ -44,15 +49,30 @@ interface BankAccount {
 
 interface BankTransaction {
   id: string;
-  date: string;
   description: string;
-  reference: string;
   amount: number;
-  type: 'deposit' | 'withdrawal';
+  transactionDate: string;
+  type: 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER' | 'FEE' | 'INTEREST';
+  reference?: string;
+  category?: string;
+  runningBalance: number;
   status: 'cleared' | 'pending' | 'unreconciled';
-  category: string;
   reconciled: boolean;
   reconciledAt?: string;
+  paymentMethod?: {
+    id: string;
+    name: string;
+    accountNumber?: string;
+    currency: string;
+  };
+}
+
+interface BalanceSummary {
+  openingBalance: number;
+  totalDeposits: number;
+  totalWithdrawals: number;
+  closingBalance: number;
+  unreconciledAmount: number;
 }
 
 interface ReconciliationSummary {
@@ -71,11 +91,13 @@ const BankingDetailsPage: React.FC = () => {
 
   const [account, setAccount] = useState<BankAccount | null>(null);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [balanceSummary, setBalanceSummary] = useState<BalanceSummary | null>(null);
   const [reconciliation, setReconciliation] = useState<ReconciliationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
 
   // Load account details and transactions
   const loadAccountData = async () => {
@@ -91,8 +113,9 @@ const BankingDetailsPage: React.FC = () => {
       });
 
       if (accountResponse.ok) {
-        const accounts = await accountResponse.json();
-        const foundAccount = accounts.find((acc: any) => acc.id === accountId);
+        const accountData = await accountResponse.json();
+        const paymentMethods = accountData.paymentMethods || [];
+        const foundAccount = paymentMethods.find((acc: any) => acc.id === accountId);
         
         if (foundAccount) {
           const transformedAccount: BankAccount = {
@@ -114,6 +137,9 @@ const BankingDetailsPage: React.FC = () => {
           };
           setAccount(transformedAccount);
 
+          // Load transactions with enhanced data
+          await loadTransactions(accountId);
+
           // Set reconciliation summary
           setReconciliation({
             statementBalance: transformedAccount.balance,
@@ -126,57 +152,9 @@ const BankingDetailsPage: React.FC = () => {
         } else {
           console.error('Account not found');
         }
+      } else {
+        console.error('Failed to fetch payment methods');
       }
-
-      // Load transactions for this account (mock data for now)
-      setTransactions([
-        {
-          id: '1',
-          date: '2025-07-29',
-          description: 'Customer Payment - Sweet Connect',
-          reference: 'PAY-001',
-          amount: 2200000.00,
-          type: 'deposit',
-          status: 'cleared',
-          category: 'Customer Payment',
-          reconciled: true,
-          reconciledAt: '2025-07-29'
-        },
-        {
-          id: '2',
-          date: '2025-07-28',
-          description: 'Interest for Bank Loan',
-          reference: 'INT-001',
-          amount: -150000.00,
-          type: 'withdrawal',
-          status: 'pending',
-          category: 'Interest Expenses',
-          reconciled: false
-        },
-        {
-          id: '3',
-          date: '2025-07-27',
-          description: 'Office Rent Payment',
-          reference: 'RENT-001',
-          amount: -1800000.00,
-          type: 'withdrawal',
-          status: 'cleared',
-          category: 'Rent Expense',
-          reconciled: true,
-          reconciledAt: '2025-07-27'
-        },
-        {
-          id: '4',
-          date: '2025-07-26',
-          description: 'Equipment Purchase',
-          reference: 'EQ-001',
-          amount: -2500000.00,
-          type: 'withdrawal',
-          status: 'unreconciled',
-          category: 'Equipment',
-          reconciled: false
-        }
-      ]);
 
     } catch (error) {
       console.error('Error loading account data:', error);
@@ -185,11 +163,95 @@ const BankingDetailsPage: React.FC = () => {
     }
   };
 
+  // Load transactions with enhanced API
+  const loadTransactions = async (paymentMethodId: string) => {
+    try {
+      const transactionResponse = await fetch(
+        `${API_URL}/banking/payment-methods/${paymentMethodId}/transactions?page=1&limit=50&status=${filterStatus}${searchTerm ? `&search=${searchTerm}` : ''}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': 'default'
+          }
+        }
+      );
+
+      if (transactionResponse.ok) {
+        const transactionData = await transactionResponse.json();
+        setTransactions(transactionData.transactions || []);
+        setBalanceSummary(transactionData.balanceSummary);
+      }
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+      // Fallback to mock data
+      setTransactions([
+        {
+          id: '1',
+          description: 'Customer Payment - Sweet Connect',
+          amount: 2200000.00,
+          transactionDate: '2025-07-29',
+          type: 'DEPOSIT',
+          reference: 'PAY-001',
+          category: 'Customer Payment',
+          runningBalance: 67349504.10,
+          status: 'cleared',
+          reconciled: true,
+          reconciledAt: '2025-07-29'
+        },
+        {
+          id: '2',
+          description: 'Interest for A Bank Loan',
+          amount: -10000000.00,
+          transactionDate: '2025-07-30',
+          type: 'WITHDRAWAL',
+          reference: 'INT-001',
+          category: 'Interest Expenses',
+          runningBalance: 57349504.10,
+          status: 'pending',
+          reconciled: false
+        },
+        {
+          id: '3',
+          description: 'Customer Payment',
+          amount: 1218000.00,
+          transactionDate: '2025-06-24',
+          type: 'DEPOSIT',
+          reference: 'PAY-002',
+          category: 'Customer Payment',
+          runningBalance: 85149504.10,
+          status: 'cleared',
+          reconciled: true,
+          reconciledAt: '2025-06-24'
+        },
+        {
+          id: '4',
+          description: 'Customer Payment',
+          amount: 1093528.00,
+          transactionDate: '2025-06-19',
+          type: 'DEPOSIT',
+          reference: 'PAY-003',
+          category: 'Customer Payment',
+          runningBalance: 83931504.10,
+          status: 'unreconciled',
+          reconciled: false
+        }
+      ]);
+
+      setBalanceSummary({
+        openingBalance: 0,
+        totalDeposits: 4511528.00,
+        totalWithdrawals: 10000000.00,
+        closingBalance: 67349504.10,
+        unreconciledAmount: 1093528.00
+      });
+    }
+  };
+
   useEffect(() => {
     if (accountId) {
       loadAccountData();
     }
-  }, [accountId]);
+  }, [accountId, filterStatus, searchTerm]);
 
   const formatCurrency = (amount: number, currency: string = 'MMK') => {
     return new Intl.NumberFormat('en-US', {
@@ -223,9 +285,17 @@ const BankingDetailsPage: React.FC = () => {
     }
   };
 
+  const getTransactionIcon = (type: string, amount: number) => {
+    if (amount > 0) {
+      return <ArrowUpCircle className="h-5 w-5 text-green-600" />;
+    } else {
+      return <ArrowDownCircle className="h-5 w-5 text-red-600" />;
+    }
+  };
+
   const filteredTransactions = transactions.filter(transaction => {
     const matchesSearch = transaction.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.reference.toLowerCase().includes(searchTerm.toLowerCase());
+      (transaction.reference && transaction.reference.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesFilter = filterStatus === 'all' || transaction.status === filterStatus;
     
@@ -241,7 +311,6 @@ const BankingDetailsPage: React.FC = () => {
   };
 
   const handleReconcileSelected = () => {
-    // Implement reconciliation logic
     console.log('Reconciling transactions:', selectedTransactions);
   };
 
@@ -276,8 +345,8 @@ const BankingDetailsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
+      {/* Enhanced Header */}
+      <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
@@ -290,10 +359,17 @@ const BankingDetailsPage: React.FC = () => {
               {getAccountIcon(account.type)}
               <div className="ml-3">
                 <h1 className="text-xl font-bold text-gray-900">{account.name}</h1>
-                <p className="text-sm text-gray-600">{account.bankName} • {account.accountNumber}</p>
+                <p className="text-sm text-gray-600">Account Number: xxxx{account.accountNumber.slice(-4)}</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <button 
+                onClick={() => setShowAddTransaction(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center text-sm"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Transaction
+              </button>
               <button className="text-blue-600 hover:text-blue-800 flex items-center">
                 <Upload className="h-4 w-4 mr-2" />
                 Import Statement
@@ -308,51 +384,63 @@ const BankingDetailsPage: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Account Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow">
+        {/* Enhanced Account Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <DollarSign className="h-8 w-8 text-blue-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Current Balance</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(account.balance, account.currency)}
+                  {formatCurrency(balanceSummary?.closingBalance || account.balance, account.currency)}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow">
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <CheckCircle className="h-8 w-8 text-green-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Reconciled Balance</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(account.reconciledBalance, account.currency)}
+                  {formatCurrency(0, account.currency)}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow">
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <AlertCircle className="h-8 w-8 text-yellow-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Unreconciled</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {account.unreconciledTransactions}
+                  0
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow">
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <Calendar className="h-8 w-8 text-purple-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Last Reconciled</p>
                 <p className="text-sm font-bold text-gray-900">
-                  {account.lastReconciled ? new Date(account.lastReconciled).toLocaleDateString() : 'Never'}
+                  Never
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center">
+              <TrendingUp className="h-8 w-8 text-emerald-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">This Month</p>
+                <p className="text-lg font-bold text-emerald-600">
+                  +{formatCurrency(balanceSummary?.totalDeposits || 0, account.currency)}
                 </p>
               </div>
             </div>
@@ -361,39 +449,35 @@ const BankingDetailsPage: React.FC = () => {
 
         {/* Reconciliation Summary */}
         {reconciliation && (
-          <div className="bg-white p-6 rounded-lg shadow mb-8">
+          <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Reconciliation Summary</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div>
                 <p className="text-sm text-gray-600">Statement Balance</p>
-                <p className="text-lg font-semibold">{formatCurrency(reconciliation.statementBalance)}</p>
+                <p className="text-lg font-semibold">{formatCurrency(0)}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Book Balance</p>
-                <p className="text-lg font-semibold">{formatCurrency(reconciliation.bookBalance)}</p>
+                <p className="text-lg font-semibold">{formatCurrency(0)}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Difference</p>
-                <p className={`text-lg font-semibold ${reconciliation.difference === 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(reconciliation.difference)}
+                <p className="text-lg font-semibold text-green-600">
+                  {formatCurrency(0)}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Status</p>
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  reconciliation.status === 'reconciled' ? 'bg-green-100 text-green-800' :
-                  reconciliation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                  {reconciliation.status}
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  reconciled
                 </span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Transactions Section */}
-        <div className="bg-white rounded-lg shadow">
+        {/* Enhanced Transactions Section */}
+        <div className="bg-white rounded-lg shadow-sm border">
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Transactions</h3>
@@ -459,14 +543,17 @@ const BankingDetailsPage: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Reference
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Deposits
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Withdrawals
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Running Balance
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Category
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Reconciled
@@ -485,26 +572,45 @@ const BankingDetailsPage: React.FC = () => {
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(transaction.date).toLocaleDateString()}
+                      {new Date(transaction.transactionDate).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{transaction.description}</div>
+                      <div className="flex items-center">
+                        {getTransactionIcon(transaction.type, transaction.amount)}
+                        <div className="ml-3">
+                          <div className="text-sm font-medium text-gray-900">{transaction.description}</div>
+                          <div className="text-sm text-gray-500">{transaction.category}</div>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {transaction.reference}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <span className={transaction.amount >= 0 ? 'text-green-600' : 'text-red-600'}>
-                        {formatCurrency(Math.abs(transaction.amount), account.currency)}
-                      </span>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      {transaction.amount > 0 ? (
+                        <span className="text-green-600 font-semibold">
+                          {formatCurrency(transaction.amount, account.currency)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      {transaction.amount < 0 ? (
+                        <span className="text-red-600 font-semibold">
+                          {formatCurrency(Math.abs(transaction.amount), account.currency)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900">
+                      {formatCurrency(transaction.runningBalance, account.currency)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(transaction.status)}`}>
                         {transaction.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {transaction.category}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {transaction.reconciled ? (

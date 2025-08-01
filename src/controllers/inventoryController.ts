@@ -157,15 +157,21 @@ export class InventoryController {
         where.category = category;
       }
       
-      if (status) {
-        where.status = status;
+      // Handle isActive filter - only apply if explicitly provided
+      if (req.query.isActive !== undefined && req.query.isActive !== '') {
+        where.isActive = req.query.isActive === 'true';
       }
+      
+      // Debug logging
+      console.log('Inventory query params:', req.query);
+      console.log('Where clause:', where);
       
       if (lowStock === 'true') {
         where.quantityOnHand = { lte: where.reorderLevel || 0 };
       }
 
       // Get items with pagination
+      console.log('Executing Prisma query with where:', JSON.stringify(where, null, 2));
       const [items, total] = await Promise.all([
         prisma.inventoryItem.findMany({
           where,
@@ -182,6 +188,7 @@ export class InventoryController {
         }),
         prisma.inventoryItem.count({ where })
       ]);
+      console.log('Query result - items found:', items.length, 'total:', total);
 
       // Calculate additional metrics
       const itemsWithMetrics = await Promise.all(

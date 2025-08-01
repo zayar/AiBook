@@ -578,7 +578,10 @@ export class CategorizationService {
     ];
 
     defaultCategories.forEach(category => {
-      this.addCategory(category);
+      this.addCategory({
+        ...category,
+        isActive: true
+      });
     });
   }
 

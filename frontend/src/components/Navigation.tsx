@@ -30,15 +30,20 @@ import {
   Receipt,
   CreditCard,
   Package,
-  Building2
+  Building2,
+  Calculator,
+  UserCheck
 } from 'lucide-react'
 
 const navigation = [
   { name: 'AI Dashboard', href: '/', icon: Brain, badge: 'AI' },
   { name: 'Transactions', href: '/transactions', icon: Activity, badge: 'Smart' },
   { name: 'Invoices', href: '/invoices', icon: Receipt, badge: 'New' },
+  { name: 'Payment Received', href: '/payments-received', icon: CreditCard, badge: 'Money' },
   { name: 'Customers', href: '/customers', icon: Users, badge: 'Sales' },
+  { name: 'Salespeople', href: '/salespeople', icon: UserCheck, badge: 'Team' },
   { name: 'Items', href: '/items', icon: Package, badge: 'Inventory' },
+  { name: 'Taxes', href: '/taxes', icon: Calculator, badge: 'VAT' },
   { name: 'Banking', href: '/banking', icon: Building2, badge: 'Reconcile' },
   { name: 'AI Insights', href: '/ai-insights', icon: Sparkles, badge: 'ML' },
   { name: 'Reports', href: '/reports', icon: BarChart3 },

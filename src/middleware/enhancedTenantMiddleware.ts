@@ -104,11 +104,40 @@ export const enhancedTenantMiddleware = async (
     }
 
     // Validate that the tenant exists in the database
-    const prisma = getPrismaClient();
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { id: true, name: true, domain: true, settings: true },
-    });
+    let tenant;
+    try {
+      const prisma = getPrismaClient();
+      tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, domain: true, settings: true },
+      });
+    } catch (error) {
+      console.warn('Database connection failed during tenant validation:', error);
+      
+      // In development mode, create a default tenant context if database is unavailable
+      if (process.env.NODE_ENV === 'development') {
+        tenant = {
+          id: tenantId,
+          name: 'Development Tenant',
+          domain: 'localhost',
+          settings: {}
+        };
+        console.log('Using development tenant fallback for tenant:', tenantId);
+      } else {
+        throw new AppError('Database connection failed', 500);
+      }
+    }
+
+    // If no tenant found and we're in development, create a fallback
+    if (!tenant && process.env.NODE_ENV === 'development') {
+      tenant = {
+        id: tenantId,
+        name: 'Development Tenant',
+        domain: 'localhost',
+        settings: {}
+      };
+      console.log('Creating development tenant fallback for tenant:', tenantId);
+    }
 
     if (!tenant) {
       throw new AppError('Invalid tenant', 404);

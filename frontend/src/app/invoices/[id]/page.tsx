@@ -23,9 +23,13 @@ import {
   TrendingUp,
   Users,
   Target,
-  Zap
+  Zap,
+  UserCheck
 } from 'lucide-react';
 import PaymentRecordModal from '@/components/PaymentRecordModal';
+import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
+import { InvoiceAPI } from '@/lib/invoice-api';
+import api from '@/lib/api';
 
 // Types
 interface Invoice {
@@ -37,6 +41,13 @@ interface Invoice {
     email: string;
     phone?: string;
     address?: any;
+  };
+  salesperson?: {
+    id: string;
+    name: string;
+    email?: string;
+    position?: string;
+    department?: string;
   };
   issueDate: string;
   dueDate: string;
@@ -80,6 +91,21 @@ interface AIAnalysis {
   };
 }
 
+interface JournalEntry {
+  id: string;
+  accountId: string;
+  type: 'DEBIT' | 'CREDIT';
+  amount: string;
+  memo: string;
+  reference: string;
+  postedAt: string;
+  account: {
+    id: string;
+    name: string;
+    code: string;
+  };
+}
+
 export default function InvoiceDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -87,6 +113,7 @@ export default function InvoiceDetailPage() {
   
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -98,79 +125,64 @@ export default function InvoiceDetailPage() {
     try {
       setLoading(true);
       
-      // Mock data for demo
-      const mockInvoice: Invoice = {
-        id: invoiceId,
-        invoiceNumber: 'INV-001234',
+      // Fetch real invoice data from API using the proper API client
+      const data = await InvoiceAPI.getInvoice(invoiceId);
+      const apiInvoice = data.invoice;
+      
+      // Transform API data to match frontend interface
+      const realInvoice: Invoice = {
+        id: apiInvoice.id,
+        invoiceNumber: apiInvoice.invoiceNumber,
         customer: {
-          id: '1',
-          name: 'Acme Corporation',
-          email: 'contact@acme.com',
-          phone: '+1-555-0123',
-          address: {
-            street: '123 Business St',
-            city: 'Business City',
-            state: 'BC',
-            zipCode: '12345',
-            country: 'Myanmar'
-          }
+          id: apiInvoice.customer.id,
+          name: apiInvoice.customer.name,
+          email: apiInvoice.customer.email,
+          phone: apiInvoice.customer.phone,
+          address: apiInvoice.customer.address
         },
-        issueDate: '2024-01-15',
-        dueDate: '2024-02-15',
-        subtotal: 1500000,
-        taxAmount: 150000,
-        totalAmount: 1650000,
-        paidAmount: 0,
-        status: 'SENT',
-        currency: 'MMK',
-        notes: 'Thank you for your business!',
-        termsConditions: 'Payment due within 30 days. Late fees may apply after due date.',
-        items: [
-          {
-            id: '1',
-            description: 'Web Development Services - E-commerce Platform',
-            quantity: 1,
-            unitPrice: 1200000,
-            taxRate: 10,
-            totalPrice: 1200000
-          },
-          {
-            id: '2',
-            description: 'SEO Optimization Package',
-            quantity: 1,
-            unitPrice: 300000,
-            taxRate: 10,
-            totalPrice: 300000
-          }
-        ],
-        payments: []
+        salesperson: apiInvoice.salesperson ? {
+          id: apiInvoice.salesperson.id,
+          name: apiInvoice.salesperson.name,
+          email: apiInvoice.salesperson.email,
+          position: apiInvoice.salesperson.position,
+          department: apiInvoice.salesperson.department
+        } : undefined,
+        issueDate: apiInvoice.issueDate,
+        dueDate: apiInvoice.dueDate,
+        subtotal: parseFloat(apiInvoice.subtotal),
+        taxAmount: parseFloat(apiInvoice.taxAmount),
+        totalAmount: parseFloat(apiInvoice.totalAmount),
+        paidAmount: parseFloat(apiInvoice.paidAmount),
+        status: apiInvoice.status,
+        currency: apiInvoice.currency,
+        notes: apiInvoice.notes || '',
+        termsConditions: apiInvoice.termsConditions || '',
+        items: apiInvoice.items.map((item: any) => ({
+          id: item.id,
+          description: item.description,
+          quantity: parseFloat(item.quantity),
+          unitPrice: parseFloat(item.unitPrice),
+          taxRate: parseFloat(item.taxRate),
+          totalPrice: parseFloat(item.totalPrice)
+        })),
+        payments: apiInvoice.payments || []
       };
 
-      const mockAIAnalysis: AIAnalysis = {
-        riskScore: 15,
-        paymentPrediction: {
-          probability: 0.92,
-          expectedDate: '2024-02-10',
-          confidence: 0.88
-        },
-        recommendations: [
-          'Send payment reminder 5 days before due date',
-          'Offer early payment discount to improve cash flow',
-          'Consider automated payment setup for future invoices'
-        ],
-        insights: {
-          customerBehavior: 'Customer typically pays within 25 days with 95% reliability',
-          marketTrends: 'Similar businesses in this sector are experiencing 10% faster payment cycles',
-          actionItems: [
-            'Set up automated reminder for Feb 10th',
-            'Prepare follow-up email template',
-            'Review credit terms for future transactions'
-          ]
-        }
-      };
+      // Fetch journal entries for this invoice (ALE accounting)
+      try {
+        const journalResponse = await api.get(`/invoices/${invoiceId}/journal-entries`);
+        setJournalEntries(journalResponse.data.journalEntries || []);
+      } catch (journalError) {
+        console.error('Error fetching journal entries:', journalError);
+        setJournalEntries([]);
+      }
 
-      setInvoice(mockInvoice);
-      setAiAnalysis(mockAIAnalysis);
+      setInvoice(realInvoice);
+      
+      // Set AI analysis data from the API response
+      if (data.aiAnalysis) {
+        setAiAnalysis(data.aiAnalysis);
+      }
     } catch (error) {
       console.error('Error fetching invoice details:', error);
     } finally {
@@ -213,11 +225,7 @@ export default function InvoiceDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <UltraEnhancedLoading />;
   }
 
   if (!invoice) {
@@ -318,10 +326,10 @@ export default function InvoiceDetailPage() {
                       <span className="text-sm font-medium text-gray-900">Payment Probability</span>
                     </div>
                     <div className="text-2xl font-bold text-green-600 mb-1">
-                      {Math.round(aiAnalysis.paymentPrediction.probability * 100)}%
+                      {aiAnalysis?.paymentPrediction?.probability ? Math.round(aiAnalysis.paymentPrediction.probability * 100) : 0}%
                     </div>
                     <div className="text-xs text-gray-500">
-                      Expected: {formatDate(aiAnalysis.paymentPrediction.expectedDate)}
+                      Expected: {aiAnalysis?.paymentPrediction?.expectedDate ? formatDate(aiAnalysis.paymentPrediction.expectedDate) : 'N/A'}
                     </div>
                   </div>
 
@@ -344,7 +352,7 @@ export default function InvoiceDetailPage() {
                       <span className="text-sm font-medium text-gray-900">Confidence</span>
                     </div>
                     <div className="text-2xl font-bold text-purple-600 mb-1">
-                      {Math.round(aiAnalysis.paymentPrediction.confidence * 100)}%
+                      {aiAnalysis?.paymentPrediction?.confidence ? Math.round(aiAnalysis.paymentPrediction.confidence * 100) : 0}%
                     </div>
                     <div className="text-xs text-gray-500">
                       High Confidence
@@ -420,6 +428,17 @@ export default function InvoiceDetailPage() {
                       <span className="text-gray-600">Currency:</span>
                       <span className="font-medium">{invoice.currency}</span>
                     </div>
+                    {invoice.salesperson && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Salesperson:</span>
+                        <div className="text-right">
+                          <div className="font-medium">{invoice.salesperson.name}</div>
+                          {invoice.salesperson.position && (
+                            <div className="text-sm text-gray-500">{invoice.salesperson.position}</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -577,6 +596,62 @@ export default function InvoiceDetailPage() {
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Journal Entries (ALE Accounting) */}
+            {journalEntries.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold text-gray-900">Journal Entries</h3>
+                  <span className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded-full font-medium">
+                    ALE
+                  </span>
+                </div>
+                
+                <div className="space-y-3">
+                  {journalEntries.map(entry => (
+                    <div key={entry.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            entry.type === 'DEBIT' 
+                              ? 'bg-red-100 text-red-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {entry.type}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900">
+                            {entry.account.code} - {entry.account.name}
+                          </span>
+                        </div>
+                        <span className="text-sm font-semibold text-gray-900">
+                          {formatCurrency(parseFloat(entry.amount), invoice.currency)}
+                        </span>
+                      </div>
+                      
+                      <div className="text-xs text-gray-600 mb-1">
+                        {entry.memo}
+                      </div>
+                      
+                      <div className="flex justify-between items-center text-xs text-gray-500">
+                        <span>Ref: {entry.reference}</span>
+                        <span>{formatDate(entry.postedAt)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <CheckCircle className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-900">Double-Entry Verified</span>
+                  </div>
+                  <div className="text-xs text-blue-700">
+                    All journal entries follow ALE accounting principles with balanced debits and credits.
+                  </div>
                 </div>
               </div>
             )}

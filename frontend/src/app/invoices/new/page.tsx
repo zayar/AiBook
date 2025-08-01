@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CustomerAPI } from '@/lib/customer-api';
 import { ItemAPI, InventoryItem } from '@/lib/item-api';
+import { taxAPI, TaxRate } from '@/lib/tax-api';
+import { salespersonAPI, Salesperson } from '@/lib/salesperson-api';
 import { 
   ArrowLeft, 
   Plus, 
@@ -34,7 +36,8 @@ import {
   MicOff,
   Lightbulb,
   TrendingUp,
-  Brain
+  Brain,
+  UserCheck
 } from 'lucide-react';
 
 // Types
@@ -54,6 +57,7 @@ interface InvoiceItem {
   quantity: number;
   unitPrice: number;
   taxRate: number;
+  taxRateId?: string; // Selected tax rate ID
   totalPrice: number;
   accountCode?: string;
 }
@@ -61,6 +65,8 @@ interface InvoiceItem {
 interface InvoiceForm {
   customerId: string;
   customer?: Customer;
+  salespersonId?: string;
+  salesperson?: Salesperson;
   invoiceNumber: string;
   issueDate: string;
   dueDate: string;
@@ -83,7 +89,7 @@ interface AIAutofillSuggestion {
   reason: string;
 }
 
-export default function NewInvoicePage() {
+function NewInvoiceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const duplicateId = searchParams.get('duplicate');
@@ -144,6 +150,10 @@ export default function NewInvoicePage() {
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [salespeople, setSalespeople] = useState<Salesperson[]>([]);
+  const [salespersonSearch, setSalespersonSearch] = useState('');
+  const [showSalespersonDropdown, setShowSalespersonDropdown] = useState(false);
 
   useEffect(() => {
     if (!manualInvoiceNumber) {
@@ -152,6 +162,8 @@ export default function NewInvoicePage() {
     fetchCustomers();
     loadInventoryItems();
     fetchAccounts();
+    fetchTaxRates();
+    fetchSalespeople();
     
     if (duplicateId) {
       loadInvoiceForDuplication(duplicateId);
@@ -262,6 +274,25 @@ export default function NewInvoicePage() {
       }
     } catch (error) {
       console.error('Error loading accounts:', error);
+    }
+  };
+
+  // Fetch tax rates for dropdown
+  const fetchTaxRates = async () => {
+    try {
+      const response = await taxAPI.getTaxRates();
+      setTaxRates(response.taxRates.filter(rate => rate.isActive) || []);
+    } catch (error) {
+      console.error('Error loading tax rates:', error);
+    }
+  };
+
+  const fetchSalespeople = async () => {
+    try {
+      const response = await salespersonAPI.getSalespeople();
+      setSalespeople(response.salespeople.filter(person => person.isActive) || []);
+    } catch (error) {
+      console.error('Error loading salespeople:', error);
     }
   };
 
@@ -408,6 +439,16 @@ export default function NewInvoicePage() {
     setShowCustomerDropdown(false);
   };
 
+  const selectSalesperson = (salesperson: Salesperson) => {
+    setFormData(prev => ({
+      ...prev,
+      salespersonId: salesperson.id,
+      salesperson
+    }));
+    setSalespersonSearch(salesperson.name);
+    setShowSalespersonDropdown(false);
+  };
+
   const calculateSubtotal = () => {
     return formData.items.reduce((sum, item) => sum + item.totalPrice, 0);
   };
@@ -445,6 +486,7 @@ export default function NewInvoicePage() {
     try {
       const invoiceData = {
         customerId: formData.customerId,
+        salespersonId: formData.salespersonId,
         issueDate: formData.issueDate,
         dueDate: formData.dueDate,
         currency: formData.currency,
@@ -498,6 +540,12 @@ export default function NewInvoicePage() {
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
     customer.email.toLowerCase().includes(customerSearch.toLowerCase())
+  );
+
+  const filteredSalespeople = salespeople.filter(salesperson =>
+    salesperson.name.toLowerCase().includes(salespersonSearch.toLowerCase()) ||
+    salesperson.email?.toLowerCase().includes(salespersonSearch.toLowerCase()) ||
+    salesperson.position?.toLowerCase().includes(salespersonSearch.toLowerCase())
   );
 
   // AI Assist Functions
@@ -903,6 +951,85 @@ export default function NewInvoicePage() {
                             <div className="flex items-center space-x-2">
                               <Phone className="h-3 w-3" />
                               <span>{formData.customer.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Salesperson Selection */}
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  Salesperson
+                </label>
+                <div className="relative">
+                  <div className="flex">
+                    <div className="relative flex-1">
+                      <UserCheck className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Select or Add Salesperson"
+                        value={salespersonSearch}
+                        onChange={(e) => {
+                          setSalespersonSearch(e.target.value);
+                          setShowSalespersonDropdown(true);
+                        }}
+                        onFocus={() => setShowSalespersonDropdown(true)}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push('/salespeople/new')}
+                      className="px-4 py-3 bg-gray-100 border border-l-0 border-gray-300 rounded-r-lg hover:bg-gray-200 text-gray-600"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {showSalespersonDropdown && filteredSalespeople.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                      {filteredSalespeople.map(salesperson => (
+                        <button
+                          key={salesperson.id}
+                          onClick={() => selectSalesperson(salesperson)}
+                          className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                        >
+                          <div className="font-medium text-gray-900">{salesperson.name}</div>
+                          <div className="text-sm text-gray-600">
+                            {salesperson.position} {salesperson.department && `• ${salesperson.department}`}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {formData.salesperson && (
+                  <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-start space-x-3">
+                      <UserCheck className="h-5 w-5 text-green-600 mt-0.5" />
+                      <div>
+                        <h4 className="font-medium text-green-900">{formData.salesperson.name}</h4>
+                        <div className="text-sm text-green-700 space-y-1 mt-1">
+                          {formData.salesperson.position && (
+                            <div className="flex items-center space-x-2">
+                              <span>{formData.salesperson.position}</span>
+                            </div>
+                          )}
+                          {formData.salesperson.department && (
+                            <div className="flex items-center space-x-2">
+                              <Building className="h-3 w-3" />
+                              <span>{formData.salesperson.department}</span>
+                            </div>
+                          )}
+                          {formData.salesperson.email && (
+                            <div className="flex items-center space-x-2">
+                              <Mail className="h-3 w-3" />
+                              <span>{formData.salesperson.email}</span>
                             </div>
                           )}
                         </div>
@@ -1395,17 +1522,36 @@ export default function NewInvoicePage() {
                             {/* Tax Rate */}
                             <div>
                               <label className="text-xs font-medium text-gray-700 mb-1 block">
-                                Tax (%)
+                                Tax
                               </label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                value={item.taxRate}
-                                onChange={(e) => updateItem(item.id, { taxRate: parseFloat(e.target.value) || 0 })}
+                              <select
+                                value={item.taxRateId || ''}
+                                onChange={(e) => {
+                                  const selectedTaxRate = taxRates.find(rate => rate.id === e.target.value);
+                                  updateItem(item.id, { 
+                                    taxRateId: e.target.value,
+                                    taxRate: selectedTaxRate ? selectedTaxRate.rate : 0 
+                                  });
+                                }}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                              />
+                              >
+                                <option value="">No Tax</option>
+                                {taxRates.map(taxRate => (
+                                  <option key={taxRate.id} value={taxRate.id}>
+                                    {taxRate.name} ({taxRate.rate}%)
+                                  </option>
+                                ))}
+                              </select>
+                              {item.taxRate > 0 && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  Tax Amount: {new Intl.NumberFormat('en-US', {
+                                    style: 'currency',
+                                    currency: formData.currency,
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 2
+                                  }).format(item.totalPrice * item.taxRate / 100)}
+                                </div>
+                              )}
                             </div>
 
                             {/* Total Price Display */}
@@ -1653,5 +1799,13 @@ export default function NewInvoicePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function NewInvoicePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <NewInvoiceContent />
+    </Suspense>
   );
 } 

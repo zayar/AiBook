@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { BankTransactionService } from '../services/bankTransactionService';
 
 const prisma = new PrismaClient();
 
@@ -281,7 +282,7 @@ class BankingController {
     }
   }
 
-  // Get bank transactions for a specific payment method
+  // Get bank transactions for a specific payment method with enhanced features
   static async getBankTransactions(req: Request, res: Response) {
     try {
       const tenantId = req.tenant?.tenantId;
@@ -290,42 +291,25 @@ class BankingController {
       }
 
       const { paymentMethodId } = req.params;
-      const { page = '1', limit = '20', status, reconciled } = req.query;
+      const { page = '1', limit = '20', status, reconciled, search, dateFrom, dateTo } = req.query;
 
-      const skip = (Number(page) - 1) * Number(limit);
-      
-      const where: any = { 
-        tenantId,
-        paymentMethodId
+      const options = {
+        page: Number(page),
+        limit: Number(limit),
+        status: status as string,
+        reconciled: reconciled === 'true' ? true : reconciled === 'false' ? false : undefined,
+        search: search as string,
+        dateFrom: dateFrom ? new Date(dateFrom as string) : undefined,
+        dateTo: dateTo ? new Date(dateTo as string) : undefined,
       };
-      
-      if (status && status !== 'all') {
-        where.status = status;
-      }
-      
-      if (reconciled !== undefined) {
-        where.reconciled = reconciled === 'true';
-      }
 
-      const [transactions, totalCount] = await Promise.all([
-        prisma.bankTransaction.findMany({
-          where,
-          orderBy: { transactionDate: 'desc' },
-          skip,
-          take: Number(limit)
-        }),
-        prisma.bankTransaction.count({ where })
-      ]);
+      const result = await BankTransactionService.getTransactionsWithBalance(
+        paymentMethodId as string,
+        tenantId,
+        options
+      );
 
-      res.json({
-        transactions,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total: totalCount,
-          pages: Math.ceil(totalCount / Number(limit))
-        }
-      });
+      res.json(result);
     } catch (error) {
       console.error('Get bank transactions error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -371,7 +355,7 @@ class BankingController {
             reconciliationDate: new Date(reconciliationDate || new Date()),
             statementBalance: statementBalance || 0,
             reconciledTransactions: transactionIds.length,
-            status: 'completed',
+            status: 'COMPLETED',
             notes: `Reconciled ${transactionIds.length} transactions`
           }
         });
@@ -431,6 +415,52 @@ class BankingController {
       });
     } catch (error) {
       console.error('Get reconciliation history error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Create a new bank transaction
+  static async createBankTransaction(req: Request, res: Response) {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant ID is required' });
+      }
+
+      const { paymentMethodId } = req.params;
+      const transactionData = {
+        paymentMethodId,
+        ...req.body,
+        transactionDate: new Date(req.body.transactionDate)
+      };
+
+      const transaction = await BankTransactionService.createTransaction(transactionData, tenantId);
+
+      res.json({
+        message: 'Bank transaction created successfully',
+        transaction
+      });
+    } catch (error) {
+      console.error('Create bank transaction error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Get AI-powered transaction insights
+  static async getTransactionInsights(req: Request, res: Response) {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant ID is required' });
+      }
+
+      const { paymentMethodId } = req.params;
+
+      const insights = await BankTransactionService.getTransactionInsights(paymentMethodId, tenantId);
+
+      res.json(insights);
+    } catch (error) {
+      console.error('Get transaction insights error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

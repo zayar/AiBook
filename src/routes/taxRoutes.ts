@@ -34,5 +34,7 @@ router.get('/reports', TaxController.getTaxReports);
 router.get('/rates', TaxController.getTaxRates);
 router.post('/rates', TaxController.createTaxRate);
 router.put('/rates/:id', TaxController.updateTaxRate);
+router.delete('/rates/:id', TaxController.deleteTaxRate);
+router.patch('/rates/:id/toggle', TaxController.toggleTaxRateStatus);
 
 export default router; 

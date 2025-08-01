@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import InvoiceController from '@/controllers/invoiceController';
+import JournalController from '../controllers/journalController';
 
 const router = Router();
 
@@ -9,13 +10,13 @@ const router = Router();
  */
 
 // Create new invoice
-router.post('/', InvoiceController.createInvoice);
+router.post('/', (req, res) => InvoiceController.createInvoice(req, res));
 
 // Get all invoices with filtering and pagination
-router.get('/', InvoiceController.getInvoices);
+router.get('/', (req, res) => InvoiceController.getInvoices(req, res));
 
 // Get invoice analytics and insights
-router.get('/analytics', InvoiceController.getInvoiceAnalytics);
+router.get('/analytics', (req, res) => InvoiceController.getInvoiceAnalytics(req, res));
 
 // Get next invoice number with configurable format
 router.get('/next-number', async (req, res) => {
@@ -87,15 +88,6 @@ router.get('/next-number', async (req, res) => {
   }
 });
 
-// Get specific invoice by ID
-router.get('/:id', InvoiceController.getInvoiceById);
-
-// Process payment for an invoice
-router.post('/:id/pay', InvoiceController.processPayment);
-
-// Send invoice via email
-router.post('/:id/send', InvoiceController.sendInvoice);
-
 // Get AI suggestions
 router.post('/ai-suggestions', async (req, res) => {
   // Mock AI suggestions for now
@@ -117,28 +109,23 @@ router.post('/ai-suggestions', async (req, res) => {
   });
 });
 
-// Update invoice (PUT)
-router.put('/:id', async (req, res) => {
-  res.status(501).json({ 
-    message: 'Invoice update endpoint - Implementation in progress',
-    availableEndpoints: [
-      'POST /',
-      'GET /',
-      'GET /analytics',
-      'GET /:id',
-      'POST /:id/pay',
-      'POST /:id/send'
-    ]
-  });
-});
+/**
+ * 💰 PAYMENT MANAGEMENT
+ */
+// Record payment against an invoice
+router.post('/:id/payments', (req, res) => InvoiceController.recordPayment(req, res));
 
-// Delete invoice (soft delete)
-router.delete('/:id', async (req, res) => {
-  res.status(501).json({ 
-    message: 'Invoice deletion endpoint - Implementation in progress',
-    note: 'Will implement soft delete for audit trail compliance'
-  });
-});
+// Get all payments for an invoice
+router.get('/:id/payments', (req, res) => InvoiceController.getInvoicePayments(req, res));
+
+// Get journal entries for an invoice (ALE accounting) - Temporarily disabled
+router.get('/:id/journal-entries', (req, res) => JournalController.getInvoiceJournalEntries(req, res));
+
+// Process payment for an invoice
+router.post('/:id/pay', (req, res) => InvoiceController.processPayment(req, res));
+
+// Send invoice via email
+router.post('/:id/send', (req, res) => InvoiceController.sendInvoice(req, res));
 
 /**
  * 🔄 RECURRING INVOICE ROUTES
@@ -184,13 +171,30 @@ router.get('/:id/email-status', async (req, res) => {
   });
 });
 
-/**
- * 💰 PAYMENT MANAGEMENT
- */
-// Record payment against an invoice
-router.post('/:id/payments', InvoiceController.recordPayment);
+// Update invoice (PUT)
+router.put('/:id', async (req, res) => {
+  res.status(501).json({ 
+    message: 'Invoice update endpoint - Implementation in progress',
+    availableEndpoints: [
+      'POST /',
+      'GET /',
+      'GET /analytics',
+      'GET /:id',
+      'POST /:id/pay',
+      'POST /:id/send'
+    ]
+  });
+});
 
-// Get all payments for an invoice
-router.get('/:id/payments', InvoiceController.getInvoicePayments);
+// Delete invoice (soft delete)
+router.delete('/:id', async (req, res) => {
+  res.status(501).json({ 
+    message: 'Invoice deletion endpoint - Implementation in progress',
+    note: 'Will implement soft delete for audit trail compliance'
+  });
+});
+
+// Get specific invoice by ID (this should be last to avoid conflicts)
+router.get('/:id', (req, res) => InvoiceController.getInvoiceById(req, res));
 
 export default router; 

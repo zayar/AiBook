@@ -181,31 +181,13 @@ export class ApiService {
   }
 
   static async getAIInsights(period: string = '3m'): Promise<AIInsight[]> {
-    try {
-      const response = await api.get(`/ai/insights?period=${period}`);
-      return response.data.data.insights;
-    } catch (error) {
-      // Fallback to development mock data
-      if (process.env.NODE_ENV === 'development') {
-        const mockResponse = await fetch('http://localhost:3001/dev/mock/ai-insights');
-        return await mockResponse.json();
-      }
-      throw error;
-    }
+    const response = await api.get(`/ai/insights?period=${period}`);
+    return response.data.data.insights;
   }
 
   static async getCashFlowForecast(periods: number = 6): Promise<CashFlowForecast[]> {
-    try {
-      const response = await api.get(`/ai/forecast-cashflow?periods=${periods}`);
-      return response.data.data.forecast.periods;
-    } catch (error) {
-      // Fallback to development mock data
-      if (process.env.NODE_ENV === 'development') {
-        const mockResponse = await fetch('http://localhost:3001/dev/mock/cash-flow-forecast');
-        return await mockResponse.json();
-      }
-      throw error;
-    }
+    const response = await api.get(`/ai/forecast-cashflow?periods=${periods}`);
+    return response.data.data.forecast.periods;
   }
 
   static async detectAnomalies(): Promise<any[]> {
@@ -230,17 +212,8 @@ export class ApiService {
   }
 
   static async getAIAgents(): Promise<AIAgent[]> {
-    try {
-      const response = await api.get('/ai/agents');
-      return response.data.data.agents;
-    } catch (error) {
-      // Fallback to development mock data
-      if (process.env.NODE_ENV === 'development') {
-        const mockResponse = await fetch('http://localhost:3001/dev/mock/ai-agents');
-        return await mockResponse.json();
-      }
-      throw error;
-    }
+    const response = await api.get('/ai/agents');
+    return response.data.data.agents;
   }
 
   // Accounts

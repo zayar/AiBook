@@ -403,6 +403,113 @@ export class TaxController {
     }
   }
 
+  /**
+   * 🗑️ DELETE TAX RATE
+   * Soft delete a tax rate (mark as inactive)
+   */
+  static async deleteTaxRate(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      const { id } = req.params;
+
+      if (!tenantId) {
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      // Check if tax rate exists and belongs to tenant
+      const existingRate = await prisma.taxRate.findFirst({
+        where: { id, tenantId }
+      });
+
+      if (!existingRate) {
+        res.status(404).json({ error: 'Tax rate not found' });
+        return;
+      }
+
+      // Check if tax rate is being used in calculations
+      const usageCount = await prisma.taxCalculation.count({
+        where: { taxRateId: id }
+      });
+
+      if (usageCount > 0) {
+        // Soft delete (mark as inactive) if tax rate is being used
+        await prisma.taxRate.update({
+          where: { id },
+          data: { isActive: false }
+        });
+
+        res.json({
+          message: 'Tax rate marked as inactive due to existing usage',
+          action: 'deactivated',
+          usageCount
+        });
+      } else {
+        // Hard delete if no usage
+        await prisma.taxRate.delete({
+          where: { id }
+        });
+
+        res.json({
+          message: 'Tax rate deleted successfully',
+          action: 'deleted'
+        });
+      }
+    } catch (error) {
+      console.error('Delete tax rate error:', error);
+      res.status(500).json({ error: 'Failed to delete tax rate' });
+    }
+  }
+
+  /**
+   * 🔄 TOGGLE TAX RATE STATUS
+   * Toggle a tax rate between active and inactive
+   */
+  static async toggleTaxRateStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      const { id } = req.params;
+
+      if (!tenantId) {
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      // Check if tax rate exists and belongs to tenant
+      const existingRate = await prisma.taxRate.findFirst({
+        where: { id, tenantId }
+      });
+
+      if (!existingRate) {
+        res.status(404).json({ error: 'Tax rate not found' });
+        return;
+      }
+
+      // Toggle status
+      const updatedRate = await prisma.taxRate.update({
+        where: { id },
+        data: { isActive: !existingRate.isActive },
+        include: {
+          account: {
+            select: {
+              code: true,
+              name: true,
+              type: true
+            }
+          }
+        }
+      });
+
+      res.json({
+        message: `Tax rate ${updatedRate.isActive ? 'activated' : 'deactivated'} successfully`,
+        taxRate: updatedRate
+      });
+    } catch (error) {
+      console.error('Toggle tax rate status error:', error);
+      res.status(500).json({ error: 'Failed to toggle tax rate status' });
+    }
+  }
+
   // Private helper methods for reports
   private static async getTaxSummaryReport(tenantId: string, period: string) {
     const now = new Date();

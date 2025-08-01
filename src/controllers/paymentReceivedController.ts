@@ -1,0 +1,649 @@
+import { Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
+import { AccountingService } from '../accounting/AccountingService';
+import { JournalEntryEngine } from '../accounting/engines/JournalEntryEngine';
+
+const prisma = new PrismaClient();
+
+interface PaymentReceivedRequest {
+  customerId?: string;
+  customerName?: string;
+  amount: number;
+  paymentDate: string;
+  paymentMode: string;
+  depositType: string;
+  bankCharges?: number;
+  referenceNumber?: string;
+  taxDeducted: boolean;
+  taxAmount?: number;
+  notes?: string;
+  internalNotes?: string;
+  sendThankYouEmail: boolean;
+  invoiceAllocations?: {
+    invoiceId: string;
+    amountAllocated: number;
+  }[];
+}
+
+/**
+ * 💰 PAYMENT RECEIVED CONTROLLER
+ * Handles customer payment receipts with proper double-entry accounting
+ */
+export class PaymentReceivedController {
+
+  /**
+   * 📋 GET ALL PAYMENTS RECEIVED
+   */
+  static async getPaymentsReceived(req: Request, res: Response) {
+    try {
+      const tenantId = req.headers['x-tenant-id'] as string;
+      const { page = 1, limit = 10, status, paymentMode, startDate, endDate, search } = req.query;
+
+      const where: any = { tenantId };
+
+      if (status) where.status = status;
+      if (paymentMode) where.paymentMode = paymentMode;
+      if (startDate || endDate) {
+        where.paymentDate = {};
+        if (startDate) where.paymentDate.gte = new Date(startDate as string);
+        if (endDate) where.paymentDate.lte = new Date(endDate as string);
+      }
+      if (search) {
+        where.OR = [
+          { paymentNumber: { contains: search as string } },
+          { customerName: { contains: search as string } },
+          { referenceNumber: { contains: search as string } },
+          { customer: { name: { contains: search as string } } }
+        ];
+      }
+
+      const [payments, total] = await Promise.all([
+        prisma.paymentReceived.findMany({
+          where,
+          include: {
+            customer: true,
+            invoicePayments: {
+              include: {
+                invoice: true
+              }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          skip: (Number(page) - 1) * Number(limit),
+          take: Number(limit)
+        }),
+        prisma.paymentReceived.count({ where })
+      ]);
+
+      res.json({
+        success: true,
+        data: payments,
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: Math.ceil(total / Number(limit))
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching payments received:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch payments received',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * 📄 GET PAYMENT RECEIVED BY ID
+   */
+  static async getPaymentReceivedById(req: Request, res: Response) {
+    try {
+      const tenantId = req.headers['x-tenant-id'] as string;
+      const { id } = req.params;
+
+      const payment = await prisma.paymentReceived.findFirst({
+        where: { id, tenantId },
+        include: {
+          customer: true,
+          invoicePayments: {
+            include: {
+              invoice: true
+            }
+          },
+          journalEntries: {
+            include: {
+              account: true
+            }
+          }
+        }
+      });
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: payment
+      });
+    } catch (error) {
+      console.error('Error fetching payment received:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch payment received',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * ➕ CREATE NEW PAYMENT RECEIVED
+   */
+  static async createPaymentReceived(req: Request, res: Response) {
+    try {
+      const tenantId = req.headers['x-tenant-id'] as string;
+      const data: PaymentReceivedRequest = req.body;
+
+      // Generate payment number
+      const lastPayment = await prisma.paymentReceived.findFirst({
+        where: { tenantId },
+        orderBy: { paymentNumber: 'desc' },
+        select: { paymentNumber: true }
+      });
+
+      const nextNumber = lastPayment 
+        ? (parseInt(lastPayment.paymentNumber) + 1).toString()
+        : '2230';
+
+      // Start transaction
+      const payment = await prisma.$transaction(async (tx) => {
+        // Create payment received record
+        const paymentReceived = await tx.paymentReceived.create({
+          data: {
+            paymentNumber: nextNumber,
+            tenantId,
+            customerId: data.customerId,
+            customerName: data.customerName || (data.customerId ? undefined : 'Walk-in Customer'),
+            amount: data.amount,
+            paymentDate: new Date(data.paymentDate),
+            paymentMode: data.paymentMode as any,
+            depositType: data.depositType as any,
+            bankCharges: data.bankCharges || null,
+            referenceNumber: data.referenceNumber,
+            taxDeducted: data.taxDeducted,
+            taxAmount: data.taxAmount || null,
+            notes: data.notes,
+            internalNotes: data.internalNotes,
+            sendThankYouEmail: data.sendThankYouEmail,
+            status: 'COMPLETED'
+          }
+        });
+
+        // Create invoice allocations if provided
+        if (data.invoiceAllocations && data.invoiceAllocations.length > 0) {
+          await Promise.all(
+            data.invoiceAllocations.map(allocation =>
+              tx.invoicePayment.create({
+                data: {
+                  tenantId,
+                  invoiceId: allocation.invoiceId,
+                  paymentReceivedId: paymentReceived.id,
+                  amount: allocation.amountAllocated,
+                  amountAllocated: allocation.amountAllocated
+                }
+              })
+            )
+          );
+
+          // Update invoice paid amounts
+          for (const allocation of data.invoiceAllocations) {
+            await tx.invoice.update({
+              where: { id: allocation.invoiceId },
+              data: {
+                paidAmount: {
+                  increment: allocation.amountAllocated
+                }
+              }
+            });
+          }
+        }
+
+        // Create double-entry accounting entries
+        await PaymentReceivedController.createAccountingEntries(tx, paymentReceived, tenantId);
+
+        return paymentReceived;
+      });
+
+      const fullPayment = await prisma.paymentReceived.findUnique({
+        where: { id: payment.id },
+        include: {
+          customer: true,
+          invoicePayments: {
+            include: {
+              invoice: true
+            }
+          }
+        }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Payment received created successfully',
+        data: fullPayment
+      });
+    } catch (error) {
+      console.error('Error creating payment received:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to create payment received',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * ✏️ UPDATE PAYMENT RECEIVED
+   */
+  static async updatePaymentReceived(req: Request, res: Response) {
+    try {
+      const tenantId = req.headers['x-tenant-id'] as string;
+      const { id } = req.params;
+      const data: PaymentReceivedRequest = req.body;
+
+      // Check if payment exists
+      const existingPayment = await prisma.paymentReceived.findFirst({
+        where: { id, tenantId }
+      });
+
+      if (!existingPayment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment not found'
+        });
+      }
+
+      const payment = await prisma.$transaction(async (tx) => {
+        // Update payment received record
+        const updatedPayment = await tx.paymentReceived.update({
+          where: { id },
+          data: {
+            customerId: data.customerId,
+            customerName: data.customerName,
+            amount: data.amount,
+            paymentDate: new Date(data.paymentDate),
+            paymentMode: data.paymentMode as any,
+            depositType: data.depositType as any,
+            bankCharges: data.bankCharges || null,
+            referenceNumber: data.referenceNumber,
+            taxDeducted: data.taxDeducted,
+            taxAmount: data.taxAmount || null,
+            notes: data.notes,
+            internalNotes: data.internalNotes,
+            sendThankYouEmail: data.sendThankYouEmail
+          }
+        });
+
+        // Remove existing invoice allocations
+        const existingAllocations = await tx.invoicePayment.findMany({
+          where: { paymentReceivedId: id }
+        });
+
+        for (const allocation of existingAllocations) {
+          await tx.invoice.update({
+            where: { id: allocation.invoiceId },
+            data: {
+              paidAmount: {
+                decrement: allocation.amountAllocated || 0
+              }
+            }
+          });
+        }
+
+        await tx.invoicePayment.deleteMany({
+          where: { paymentReceivedId: id }
+        });
+
+        // Create new invoice allocations
+        if (data.invoiceAllocations && data.invoiceAllocations.length > 0) {
+          await Promise.all(
+            data.invoiceAllocations.map(allocation =>
+              tx.invoicePayment.create({
+                data: {
+                  tenantId,
+                  invoiceId: allocation.invoiceId,
+                  paymentReceivedId: id,
+                  amount: allocation.amountAllocated,
+                  amountAllocated: allocation.amountAllocated
+                }
+              })
+            )
+          );
+
+          // Update invoice paid amounts
+          for (const allocation of data.invoiceAllocations) {
+            await tx.invoice.update({
+              where: { id: allocation.invoiceId },
+              data: {
+                paidAmount: {
+                  increment: allocation.amountAllocated
+                }
+              }
+            });
+          }
+        }
+
+        // Update accounting entries (delete old ones and create new ones)
+        await tx.entry.deleteMany({
+          where: { reference: id }
+        });
+        
+        await PaymentReceivedController.createAccountingEntries(tx, updatedPayment, tenantId);
+
+        return updatedPayment;
+      });
+
+      const fullPayment = await prisma.paymentReceived.findUnique({
+        where: { id: payment.id },
+        include: {
+          customer: true,
+          invoicePayments: {
+            include: {
+              invoice: true
+            }
+          }
+        }
+      });
+
+      res.json({
+        success: true,
+        message: 'Payment received updated successfully',
+        data: fullPayment
+      });
+    } catch (error) {
+      console.error('Error updating payment received:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update payment received',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * 🗑️ DELETE PAYMENT RECEIVED
+   */
+  static async deletePaymentReceived(req: Request, res: Response) {
+    try {
+      const tenantId = req.headers['x-tenant-id'] as string;
+      const { id } = req.params;
+
+      const payment = await prisma.paymentReceived.findFirst({
+        where: { id, tenantId },
+        include: {
+          invoicePayments: true
+        }
+      });
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment not found'
+        });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        // Reverse invoice paid amounts
+        for (const allocation of payment.invoicePayments) {
+          await tx.invoice.update({
+            where: { id: allocation.invoiceId },
+            data: {
+              paidAmount: {
+                decrement: allocation.amountAllocated || 0
+              }
+            }
+          });
+        }
+
+        // Delete invoice allocations
+        await tx.invoicePayment.deleteMany({
+          where: { paymentReceivedId: id }
+        });
+
+        // Delete journal entries
+        await tx.entry.deleteMany({
+          where: { reference: id }
+        });
+
+        // Delete payment received
+        await tx.paymentReceived.delete({
+          where: { id }
+        });
+      });
+
+      res.json({
+        success: true,
+        message: 'Payment received deleted successfully'
+      });
+    } catch (error) {
+      console.error('Error deleting payment received:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to delete payment received',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * 📊 GET UNPAID INVOICES FOR CUSTOMER
+   */
+  static async getUnpaidInvoices(req: Request, res: Response) {
+    try {
+      const tenantId = req.headers['x-tenant-id'] as string;
+      const { customerId } = req.params;
+
+      if (!customerId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Customer ID is required'
+        });
+      }
+
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          tenantId,
+          customerId,
+          status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] }
+        },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          issueDate: true,
+          dueDate: true,
+          totalAmount: true,
+          paidAmount: true,
+          currency: true,
+          status: true
+        },
+        orderBy: { dueDate: 'asc' }
+      });
+
+      // Calculate amounts due
+      const unpaidInvoices = invoices.map(invoice => ({
+        ...invoice,
+        amountDue: invoice.totalAmount.minus(invoice.paidAmount),
+        isOverdue: new Date(invoice.dueDate) < new Date()
+      })).filter(invoice => invoice.amountDue.gt(0));
+
+      res.json({
+        success: true,
+        data: unpaidInvoices
+      });
+    } catch (error) {
+      console.error('Error fetching unpaid invoices:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch unpaid invoices',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * 🔢 CREATE ACCOUNTING ENTRIES FOR PAYMENT RECEIVED
+   * Implements proper double-entry bookkeeping
+   */
+  private static async createAccountingEntries(tx: any, payment: any, tenantId: string) {
+    try {
+      // Get default book
+      const book = await tx.book.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      if (!book) {
+        throw new Error('No accounting book found for tenant');
+      }
+
+      const journalId = `PMTR-${payment.paymentNumber}`;
+
+      // Determine cash/bank account based on deposit type
+      let cashAccountCode = '1001'; // Default to Cash in Hand
+      switch (payment.depositType) {
+        case 'BANK_DEPOSIT':
+          cashAccountCode = '1002'; // Bank Account
+          break;
+        case 'PETTY_CASH':
+          cashAccountCode = '1003'; // Petty Cash
+          break;
+        case 'UNDEPOSITED_FUNDS':
+          cashAccountCode = '1004'; // Undeposited Funds
+          break;
+      }
+
+      // Get or create accounts
+      const [cashAccount, revenueAccount, taxAccount] = await Promise.all([
+        tx.account.findFirst({
+          where: { tenantId, code: cashAccountCode }
+        }),
+        tx.account.findFirst({
+          where: { tenantId, code: '4001' } // Sales Revenue
+        }),
+        payment.taxDeducted ? tx.account.findFirst({
+          where: { tenantId, code: '2003' } // Tax Payable
+        }) : null
+      ]);
+
+      if (!cashAccount || !revenueAccount) {
+        throw new Error('Required accounts not found');
+      }
+
+      const entries = [];
+
+      // Debit: Cash/Bank Account (increase asset)
+      const netAmount = payment.amount - (payment.bankCharges || 0);
+      entries.push({
+        accountId: cashAccount.id,
+        bookId: book.id,
+        tenantId,
+        amount: netAmount,
+        currency: payment.currency,
+        type: 'DEBIT',
+        memo: `Payment received from ${payment.customerName || 'Customer'} - ${payment.paymentNumber}`,
+        reference: payment.id,
+        journalId,
+        postedAt: payment.paymentDate
+      });
+
+      // Credit: Revenue Account (increase revenue)
+      const revenueAmount = payment.taxDeducted 
+        ? payment.amount - (payment.taxAmount || 0)
+        : payment.amount;
+      
+      entries.push({
+        accountId: revenueAccount.id,
+        bookId: book.id,
+        tenantId,
+        amount: revenueAmount,
+        currency: payment.currency,
+        type: 'CREDIT',
+        memo: `Revenue from payment ${payment.paymentNumber}`,
+        reference: payment.id,
+        journalId,
+        postedAt: payment.paymentDate
+      });
+
+      // Credit: Tax Account (if tax deducted)
+      if (payment.taxDeducted && payment.taxAmount > 0 && taxAccount) {
+        entries.push({
+          accountId: taxAccount.id,
+          bookId: book.id,
+          tenantId,
+          amount: payment.taxAmount,
+          currency: payment.currency,
+          type: 'CREDIT',
+          memo: `Tax deducted from payment ${payment.paymentNumber}`,
+          reference: payment.id,
+          journalId,
+          postedAt: payment.paymentDate
+        });
+      }
+
+      // Debit: Bank Charges (if applicable)
+      if (payment.bankCharges && payment.bankCharges > 0) {
+        const bankChargeAccount = await tx.account.findFirst({
+          where: { tenantId, code: '6001' } // Bank Charges Expense
+        });
+
+        if (bankChargeAccount) {
+          entries.push({
+            accountId: bankChargeAccount.id,
+            bookId: book.id,
+            tenantId,
+            amount: payment.bankCharges,
+            currency: payment.currency,
+            type: 'DEBIT',
+            memo: `Bank charges for payment ${payment.paymentNumber}`,
+            reference: payment.id,
+            journalId,
+            postedAt: payment.paymentDate
+          });
+        }
+      }
+
+      // Create all journal entries
+      await Promise.all(entries.map(entry => tx.entry.create({ data: entry })));
+
+      // Update account balances
+      for (const entry of entries) {
+        const account = await tx.account.findUnique({
+          where: { id: entry.accountId }
+        });
+
+        if (account) {
+          const balanceChange = entry.type === 'DEBIT' 
+            ? (account.type === 'ASSET' || account.type === 'EXPENSE' ? entry.amount : -entry.amount)
+            : (account.type === 'LIABILITY' || account.type === 'EQUITY' || account.type === 'REVENUE' ? entry.amount : -entry.amount);
+
+          await tx.account.update({
+            where: { id: entry.accountId },
+            data: {
+              balance: {
+                increment: balanceChange
+              }
+            }
+          });
+        }
+      }
+
+    } catch (error) {
+      console.error('Error creating accounting entries:', error);
+      throw error;
+    }
+  }
+}

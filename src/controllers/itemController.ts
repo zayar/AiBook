@@ -28,7 +28,7 @@ const ItemListSchema = z.object({
   limit: z.string().optional().transform(val => val ? parseInt(val) : 20),
   search: z.string().optional(),
   category: z.string().optional(),
-  isActive: z.string().optional().transform(val => val === 'true'),
+  isActive: z.string().optional().transform(val => val === undefined ? undefined : val === 'true'),
   sortBy: z.enum(['name', 'sku', 'category', 'unitPrice', 'quantityOnHand', 'createdAt']).optional().default('name'),
   sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
 });
@@ -45,22 +45,21 @@ export const listItems = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Parse query parameters
     const query = ItemListSchema.parse(req.query);
-
+    
     // Build where clause
-    const where: any = {
+    const where: any = { 
       tenantId,
       ...(query.category && { category: query.category }),
     };
-
-    // Handle isActive filter - if not specified, show all items
+    
+    // Handle isActive filter - only apply if explicitly provided
     if (query.isActive !== undefined) {
       where.isActive = query.isActive;
-    } else {
-      // If no isActive filter is specified, show active items by default
-      where.isActive = true;
     }
-
+    // If no isActive filter is specified, show all items (both active and inactive)
+    
     // AI-powered semantic search if search term provided
     if (query.search) {
       // Use AI to enhance search - extract relevant terms and concepts

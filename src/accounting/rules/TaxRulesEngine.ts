@@ -274,7 +274,7 @@ export class TaxRulesEngine {
   }
 
   private getRequestFieldValue(request: TaxCalculationRequest, field: string): any {
-    return field.split('.').reduce((obj, key) => obj?.[key], request);
+    return field.split('.').reduce((obj: any, key) => obj?.[key], request);
   }
 
   private calculateTaxForRule(

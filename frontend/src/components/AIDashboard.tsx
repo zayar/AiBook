@@ -47,6 +47,7 @@ import { ApiService, AIInsight, CashFlowForecast, AIAgent } from '@/lib/api'
 import toast from 'react-hot-toast'
 import TransactionForm from './TransactionForm'
 import AIChat from './AIChat'
+import UltraEnhancedLoading from './UltraEnhancedLoading'
 
 interface DashboardStats {
   totalRevenue: number
@@ -272,14 +273,7 @@ export default function AIDashboard() {
   )
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex items-center gap-3">
-          <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
-          <span className="text-lg font-medium text-gray-600">Loading AI Dashboard...</span>
-        </div>
-      </div>
-    )
+    return <UltraEnhancedLoading />
   }
 
   return (

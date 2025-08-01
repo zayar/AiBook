@@ -60,7 +60,7 @@ export class ChartOfAccountsEngine {
           parentId: null, // Will be updated after all accounts are created
           bookId,
           tenantId,
-          metadata: account.metadata
+          // metadata: account.metadata // Removed as it's not in the schema
         }
       });
       
@@ -69,7 +69,7 @@ export class ChartOfAccountsEngine {
         code: createdAccount.code,
         name: createdAccount.name,
         type: createdAccount.type,
-        description: createdAccount.description,
+        description: createdAccount.description || undefined,
         isActive: createdAccount.isActive,
         currency: createdAccount.currency
       });
@@ -380,7 +380,7 @@ export class ChartOfAccountsEngine {
                   balance: 0,
                   bookId,
                   tenantId,
-                  metadata: mapItem.newAccount.metadata
+                  // metadata: mapItem.newAccount.metadata // Removed as it's not in the schema
                 }
               });
               

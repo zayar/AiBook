@@ -4,11 +4,13 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 import { z } from 'zod';
 import aiService from '@/services/aiService';
-import { AccountingService } from '@/services/accountingService';
+import { AccountingService } from '@/accounting/AccountingService';
+import { BankTransactionService } from '../services/bankTransactionService';
 
 // Validation schemas
 const createInvoiceSchema = z.object({
   customerId: z.string(),
+  salespersonId: z.string().optional(),
   issueDate: z.string().optional(),
   dueDate: z.string(),
   currency: z.string().default('USD'),
@@ -36,7 +38,7 @@ const invoicePaymentSchema = z.object({
   notes: z.string().optional()
 });
 
-export class InvoiceController {
+class InvoiceController {
   /**
    * 📄 CREATE INVOICE
    * Create a new invoice with AI-enhanced features
@@ -50,6 +52,12 @@ export class InvoiceController {
       }
 
       const validatedData = createInvoiceSchema.parse(req.body);
+      
+      console.log('🔍 Invoice creation data:', {
+        customerId: validatedData.customerId,
+        salespersonId: validatedData.salespersonId,
+        items: validatedData.items.length
+      });
       
       // Calculate totals
       let subtotal = 0;
@@ -84,6 +92,7 @@ export class InvoiceController {
         data: {
           invoiceNumber,
           customerId: validatedData.customerId,
+          salespersonId: validatedData.salespersonId,
           tenantId,
           issueDate,
           dueDate,
@@ -99,7 +108,7 @@ export class InvoiceController {
           recurring: validatedData.recurring,
           recurringInterval: validatedData.recurringInterval,
           salesOrderId: validatedData.salesOrderId,
-          status: 'DRAFT',
+          status: 'SENT', // Immediately move to receivables state per ALE accounting
           items: {
             create: validatedData.items.map(item => ({
               inventoryItemId: item.inventoryItemId || null,
@@ -145,16 +154,19 @@ export class InvoiceController {
       //   }
       // }
 
-      // Create journal entries for revenue recognition (disabled for development)
-      // const accountingService = new AccountingService({ tenantId });
-      // await accountingService.createInvoiceJournalEntries(invoice);
+      // Create journal entries for revenue recognition (ALE accounting flow)
+      const accountingService = new AccountingService({ tenantId });
+      const journalEntries = await accountingService.createInvoiceJournalEntries(invoice);
+      
+      console.log('✅ Journal entries created:', journalEntries);
 
       res.status(201).json({
         message: 'Invoice created successfully',
         invoice,
+        journalEntries: journalEntries,
         aiEnhancements: {
           autoCategorization: 'Applied to uncoded items',
-          journalEntries: 'Created automatically',
+          journalEntries: `Created ${journalEntries?.entries?.length || 0} journal entries`,
           complianceCheck: 'Passed'
         }
       });
@@ -288,6 +300,7 @@ export class InvoiceController {
         where: { id, tenantId },
         include: {
           customer: true,
+          salesperson: true,
           items: {
             include: {
               inventoryItem: {
@@ -406,16 +419,63 @@ export class InvoiceController {
         }
       });
 
-      // Create journal entries for payment
+      // Create journal entries for payment (ALE accounting flow)
       const accountingService = new AccountingService({ tenantId });
-      await accountingService.createPaymentJournalEntries(updatedInvoice, payment);
+      const paymentJournalEntries = await accountingService.createPaymentJournalEntries(payment, updatedInvoice);
+      
+      console.log('✅ Payment journal entries created:', paymentJournalEntries);
+
+      // Create corresponding bank transaction for the payment
+      try {
+        // Calculate running balance for this payment method
+        const lastTransaction = await prisma.bankTransaction.findFirst({
+          where: {
+            paymentMethodId: validatedData.paymentMethod,
+            tenantId
+          },
+          orderBy: { transactionDate: 'desc' }
+        });
+
+        const currentBalance = lastTransaction?.balance ? parseFloat(lastTransaction.balance.toString()) : 0;
+        const newBalance = currentBalance + validatedData.amount;
+
+        const bankTransaction = await prisma.bankTransaction.create({
+          data: {
+            paymentMethodId: validatedData.paymentMethod,
+            description: `Payment for Invoice ${invoice.invoiceNumber}`,
+            amount: validatedData.amount,
+            transactionDate: validatedData.paymentDate ? new Date(validatedData.paymentDate) : new Date(),
+            type: 'DEPOSIT',
+            reference: validatedData.reference || `INV-${invoice.invoiceNumber}`,
+            category: 'invoice_payment',
+            balance: newBalance,
+            runningBalance: newBalance,
+            status: 'cleared',
+            reconciled: false,
+            tenantId,
+            metadata: {
+              invoiceId: invoice.id,
+              paymentId: payment.id,
+              source: 'invoice_payment'
+            }
+          } as any
+        });
+
+        console.log('✅ Bank transaction created:', bankTransaction.id);
+      } catch (bankError) {
+        console.error('⚠️ Failed to create bank transaction (continuing with payment):', bankError);
+        // Don't fail the payment if bank transaction creation fails
+      }
 
       res.json({
-        message: 'Payment processed successfully',
-        invoice: updatedInvoice,
+        message: 'Payment recorded successfully',
         payment,
-        accountingEntries: 'Created automatically',
-        aiRecommendations: await InvoiceController.getPaymentRecommendations(updatedInvoice)
+        invoice: {
+          paidAmount: updatedInvoice.paidAmount,
+          status: updatedInvoice.status,
+          remainingBalance: parseFloat(updatedInvoice.totalAmount.toString()) - parseFloat(updatedInvoice.paidAmount.toString())
+        },
+        journalEntries: paymentJournalEntries
       });
     } catch (error) {
       console.error('Process payment error:', error);
@@ -577,6 +637,60 @@ export class InvoiceController {
     }
   }
 
+  // Get invoice journal data
+  static async getInvoiceJournalData(req: Request, res: Response): Promise<void> {
+    try {
+      const { id: invoiceId } = req.params;
+      const tenantId = req.tenant?.tenantId;
+      
+      if (!tenantId) {
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      // Get invoice to get the invoice number
+      const invoice = await prisma.invoice.findFirst({
+        where: { id: invoiceId, tenantId }
+      });
+
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+
+      // Get journal entries for this invoice from database
+      const journalEntries = await prisma.entry.findMany({
+        where: {
+          tenantId,
+          reference: invoice.invoiceNumber
+        },
+        include: {
+          account: {
+            select: {
+              code: true,
+              name: true,
+              type: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.json({
+        message: 'Journal entries retrieved successfully',
+        journalEntries,
+        invoice: {
+          id: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          totalAmount: invoice.totalAmount
+        }
+      });
+    } catch (error) {
+      console.error('Error retrieving journal entries:', error);
+      res.status(500).json({ error: 'Failed to retrieve journal entries' });
+    }
+  }
+
   // Private helper methods
   
   private static async generateInvoiceInsights(invoices: any[], tenantId: string) {
@@ -636,38 +750,143 @@ export class InvoiceController {
   }
 
   private static async analyzeInvoice(invoice: any) {
-    const analysis = {
-      riskScore: 0,
-      recommendations: [] as string[],
-      creditAssessment: 'good'
-    };
+    try {
+      // Get customer payment history for AI analysis
+      const customerInvoices = await prisma.invoice.findMany({
+        where: { customerId: invoice.customerId },
+        include: {
+          payments: {
+            orderBy: { paymentDate: 'desc' },
+            take: 1
+          }
+        },
+        orderBy: { issueDate: 'desc' },
+        take: 10
+      });
 
-    // Risk factors
-    if (invoice.status === 'OVERDUE') {
-      analysis.riskScore += 30;
-      analysis.recommendations.push('Send immediate payment reminder');
+      // Calculate basic metrics
+      const latePayments = customerInvoices.filter(inv => inv.status === 'OVERDUE').length;
+      const totalInvoices = customerInvoices.length;
+      
+      // Calculate average payment time from invoices with payments
+      const paidInvoices = customerInvoices.filter(inv => 
+        inv.status === 'PAID' && inv.payments && inv.payments.length > 0
+      );
+      
+      const avgPaymentTime = paidInvoices.length > 0 ? 
+        paidInvoices.reduce((sum, inv) => {
+          const lastPayment = inv.payments[0]; // Latest payment
+          if (lastPayment && lastPayment.paymentDate && inv.issueDate) {
+            return sum + Math.floor((lastPayment.paymentDate.getTime() - inv.issueDate.getTime()) / (1000 * 60 * 60 * 24));
+          }
+          return sum;
+        }, 0) / paidInvoices.length : 30;
+
+      // AI-powered analysis
+      const aiAnalysis = await aiService.generateFinancialInsights(invoice.tenantId, '3m');
+      
+      // Calculate intelligent risk score using AI insights
+      let riskScore = 0;
+      const recommendations: string[] = [];
+      
+      // Base risk assessment
+      if (invoice.status === 'OVERDUE') {
+        riskScore += 40;
+        recommendations.push('🚨 Invoice is overdue - Send immediate payment reminder');
+        recommendations.push('📞 Consider phone follow-up for overdue amount');
+      }
+      
+      // Amount-based risk
+      const invoiceAmount = parseFloat(invoice.totalAmount.toString());
+      if (invoiceAmount > 10000) {
+        riskScore += 15;
+        recommendations.push('💰 Large invoice amount - Monitor payment closely');
+      }
+      
+      // Customer history analysis
+      const latePaymentRate = latePayments / Math.max(totalInvoices, 1);
+      if (latePaymentRate > 0.3) {
+        riskScore += 25;
+        recommendations.push('⚠️ Customer has history of late payments - Consider credit review');
+      }
+      
+      // Payment speed analysis
+      if (avgPaymentTime > 45) {
+        riskScore += 15;
+        recommendations.push('🐌 Customer typically pays slowly - Set expectations');
+      } else if (avgPaymentTime < 15) {
+        riskScore -= 10; // Reduce risk for fast-paying customers
+        recommendations.push('⚡ Customer typically pays quickly - Low risk');
+      }
+      
+      // AI-enhanced recommendations based on patterns
+      if (aiAnalysis && aiAnalysis.length > 0) {
+        recommendations.push('🤖 AI suggests monitoring cash flow trends');
+        if (aiAnalysis.some(insight => insight.type === 'cash_flow' && insight.impact === 'high')) {
+          recommendations.push('📊 Cash flow analysis indicates collection priority');
+          riskScore += 10;
+        }
+      }
+
+      // Credit assessment
+      let creditAssessment = 'good';
+      if (riskScore > 50) {
+        creditAssessment = 'poor';
+      } else if (riskScore > 25) {
+        creditAssessment = 'fair';
+      } else if (riskScore < 10) {
+        creditAssessment = 'excellent';
+      }
+
+      // Payment prediction using AI-like analysis
+      const daysSinceIssue = Math.floor((new Date().getTime() - invoice.issueDate.getTime()) / (1000 * 60 * 60 * 24));
+      const expectedPaymentDays = avgPaymentTime + (riskScore / 5); // Factor in risk
+      const paymentProbability = Math.max(0.1, Math.min(0.95, 
+        1 - (riskScore / 100) - (daysSinceIssue / expectedPaymentDays * 0.3)
+      ));
+      
+      const expectedPaymentDate = new Date(invoice.issueDate);
+      expectedPaymentDate.setDate(expectedPaymentDate.getDate() + Math.round(expectedPaymentDays));
+
+      return {
+        riskScore: Math.round(riskScore),
+        recommendations,
+        creditAssessment,
+        paymentPrediction: {
+          probability: paymentProbability,
+          confidence: 0.75 + (totalInvoices * 0.02), // Higher confidence with more data
+          expectedDate: expectedPaymentDate.toISOString(),
+          daysToPayment: Math.round(expectedPaymentDays)
+        },
+        customerInsights: {
+          totalInvoices,
+          latePaymentRate,
+          avgPaymentDays: Math.round(avgPaymentTime),
+          lastPaymentDate: paidInvoices.length > 0 ? paidInvoices[0].payments[0]?.paymentDate?.toISOString() : null
+        },
+        aiInsights: aiAnalysis?.slice(0, 2) || []
+      };
+    } catch (error) {
+      console.error('Error in AI invoice analysis:', error);
+      // Fallback to basic analysis
+      return {
+        riskScore: 25,
+        recommendations: ['Unable to perform AI analysis - Using basic assessment'],
+        creditAssessment: 'fair',
+        paymentPrediction: {
+          probability: 0.7,
+          confidence: 0.5,
+          expectedDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          daysToPayment: 30
+        },
+        customerInsights: {
+          totalInvoices: 0,
+          latePaymentRate: 0,
+          avgPaymentDays: 30
+        },
+        aiInsights: []
+      };
     }
-
-    if (parseFloat(invoice.totalAmount.toString()) > 10000) {
-      analysis.riskScore += 10;
-      analysis.recommendations.push('Consider requiring deposit for large invoices');
-    }
-
-    // Payment history analysis
-    const customerInvoices = await prisma.invoice.findMany({
-      where: { customerId: invoice.customerId },
-      orderBy: { issueDate: 'desc' },
-      take: 10
-    });
-
-    const latePayments = customerInvoices.filter(inv => inv.status === 'OVERDUE').length;
-    if (latePayments > customerInvoices.length * 0.3) {
-      analysis.riskScore += 20;
-      analysis.creditAssessment = 'poor';
-      analysis.recommendations.push('Review credit terms for this customer');
-    }
-
-    return analysis;
   }
 
   private static async getPaymentRecommendations(invoice: any) {
@@ -685,12 +904,13 @@ export class InvoiceController {
   }
 
   // Record payment against an invoice
-  static async recordPayment(req: Request, res: Response) {
+  static async recordPayment(req: Request, res: Response): Promise<void> {
     try {
       const { id: invoiceId } = req.params;
       const tenantId = req.tenant?.tenantId;
       if (!tenantId) {
-        return res.status(400).json({ error: 'Tenant ID is required' });
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
       }
 
       const paymentSchema = z.object({
@@ -709,16 +929,18 @@ export class InvoiceController {
       });
 
       if (!invoice) {
-        return res.status(404).json({ error: 'Invoice not found' });
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
       }
 
       // Check if payment amount is valid
       const remainingBalance = parseFloat(invoice.totalAmount.toString()) - parseFloat(invoice.paidAmount.toString());
       if (validatedData.amount > remainingBalance) {
-        return res.status(400).json({ 
+        res.status(400).json({ 
           error: 'Payment amount exceeds remaining balance',
           remainingBalance 
         });
+        return;
       }
 
       const paymentDate = validatedData.paymentDate ? new Date(validatedData.paymentDate) : new Date();
@@ -747,13 +969,66 @@ export class InvoiceController {
         newStatus = 'PARTIALLY_PAID';
       }
 
-      await prisma.invoice.update({
+      const updatedInvoice = await prisma.invoice.update({
         where: { id: invoiceId },
         data: {
           paidAmount: newPaidAmount,
           status: newStatus
+        },
+        include: {
+          customer: true,
+          payments: true,
+          items: true
         }
       });
+
+      // Create journal entries for payment (ALE accounting flow)
+      const accountingService = new AccountingService({ tenantId });
+      const paymentJournalEntries = await accountingService.createPaymentJournalEntries(payment, updatedInvoice);
+      
+      console.log('✅ Payment journal entries created:', paymentJournalEntries);
+
+      // Create corresponding bank transaction for the payment
+      try {
+        // Calculate running balance for this payment method
+        const lastTransaction = await prisma.bankTransaction.findFirst({
+          where: {
+            paymentMethodId: validatedData.paymentMethod,
+            tenantId
+          },
+          orderBy: { transactionDate: 'desc' }
+        });
+
+        const currentBalance = lastTransaction?.balance ? parseFloat(lastTransaction.balance.toString()) : 0;
+        const newBalance = currentBalance + validatedData.amount;
+
+        const bankTransaction = await prisma.bankTransaction.create({
+          data: {
+            paymentMethodId: validatedData.paymentMethod,
+            description: `Payment for Invoice ${invoice.invoiceNumber}`,
+            amount: validatedData.amount,
+            transactionDate: paymentDate,
+            type: 'DEPOSIT',
+            reference: validatedData.reference || `INV-${invoice.invoiceNumber}`,
+            category: 'invoice_payment',
+            balance: newBalance,
+            runningBalance: newBalance,
+            status: 'cleared',
+            reconciled: false,
+            tenantId,
+            metadata: {
+              invoiceId: invoice.id,
+              paymentId: payment.id,
+              source: 'invoice_payment'
+            }
+          } as any
+        });
+
+        console.log('✅ Bank transaction created:', bankTransaction.id);
+      } catch (bankError) {
+        console.error('⚠️ Failed to create bank transaction (continuing with payment):', bankError);
+        // Don't fail the payment if bank transaction creation fails
+      }
 
       res.status(201).json({
         message: 'Payment recorded successfully',
@@ -762,14 +1037,16 @@ export class InvoiceController {
           paidAmount: newPaidAmount,
           status: newStatus,
           remainingBalance: totalAmount - newPaidAmount
-        }
+        },
+        journalEntries: paymentJournalEntries
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
+        res.status(400).json({ 
           error: 'Validation failed',
           details: error.errors 
         });
+        return;
       }
       console.error('Error recording payment:', error);
       res.status(500).json({ error: 'Failed to record payment' });
@@ -777,12 +1054,13 @@ export class InvoiceController {
   }
 
   // Get payments for an invoice
-  static async getInvoicePayments(req: Request, res: Response) {
+  static async getInvoicePayments(req: Request, res: Response): Promise<void> {
     try {
       const { id: invoiceId } = req.params;
       const tenantId = req.tenant?.tenantId;
       if (!tenantId) {
-        return res.status(400).json({ error: 'Tenant ID is required' });
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
       }
 
       const payments = await prisma.invoicePayment.findMany({

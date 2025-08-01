@@ -181,7 +181,7 @@ export class JournalEntryEngine {
 
     // Debit Accounts Receivable
     entries.push({
-      accountCode: '1120', // Accounts Receivable
+      accountCode: '1100', // Accounts Receivable
       type: 'DEBIT',
       amount: invoice.totalAmount,
       description: `Invoice ${invoice.invoiceNumber}`
@@ -189,7 +189,7 @@ export class JournalEntryEngine {
 
     // Credit Sales Revenue
     entries.push({
-      accountCode: '4110', // Product Sales
+      accountCode: '4000', // Sales Revenue
       type: 'CREDIT',
       amount: invoice.subtotal,
       description: `Sales for invoice ${invoice.invoiceNumber}`
@@ -198,7 +198,7 @@ export class JournalEntryEngine {
     // Credit Sales Tax Payable if applicable
     if (invoice.taxAmount > 0) {
       entries.push({
-        accountCode: '2130', // Sales Tax Payable
+        accountCode: '2100', // Accrued Expenses (for sales tax)
         type: 'CREDIT',
         amount: invoice.taxAmount,
         description: `Sales tax for invoice ${invoice.invoiceNumber}`
@@ -222,7 +222,7 @@ export class JournalEntryEngine {
 
     // Debit Cash
     entries.push({
-      accountCode: '1111', // Cash
+      accountCode: '1000', // Cash
       type: 'DEBIT',
       amount: payment.amount,
       description: `Payment ${payment.reference}`
@@ -230,7 +230,7 @@ export class JournalEntryEngine {
 
     // Credit Accounts Receivable
     entries.push({
-      accountCode: '1120', // Accounts Receivable
+      accountCode: '1100', // Accounts Receivable
       type: 'CREDIT',
       amount: payment.amount,
       description: `Payment for ${invoice ? `invoice ${invoice.invoiceNumber}` : 'outstanding balance'}`
@@ -392,6 +392,7 @@ export class JournalEntryEngine {
     startDate?: Date;
     endDate?: Date;
     accountCode?: string;
+    reference?: string;
     limit?: number;
     offset?: number;
   } = {}): Promise<any[]> {
@@ -410,6 +411,10 @@ export class JournalEntryEngine {
       if (account) {
         where.accountId = account.id;
       }
+    }
+
+    if (options.reference) {
+      where.reference = options.reference;
     }
 
     return await prisma.entry.findMany({

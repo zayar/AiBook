@@ -67,6 +67,12 @@ export class AccountingService {
     return await this.journalEngine.getJournalEntries(options);
   }
 
+  async getInvoiceJournalEntries(invoiceNumber: string) {
+    return await this.journalEngine.getJournalEntries({
+      reference: invoiceNumber
+    });
+  }
+
   // Financial Reporting operations
   async generateBalanceSheet(asOfDate?: Date) {
     return await this.reportingEngine.generateBalanceSheet(asOfDate);
