@@ -131,41 +131,41 @@ export default function InvoiceDetailPage() {
       
       // Transform API data to match frontend interface
       const realInvoice: Invoice = {
-        id: apiInvoice.id,
-        invoiceNumber: apiInvoice.invoiceNumber,
+        id: apiInvoice.id || '',
+        invoiceNumber: apiInvoice.invoiceNumber || '',
         customer: {
-          id: apiInvoice.customer.id,
-          name: apiInvoice.customer.name,
-          email: apiInvoice.customer.email,
-          phone: apiInvoice.customer.phone,
-          address: apiInvoice.customer.address
+          id: apiInvoice.customer?.id || '',
+          name: apiInvoice.customer?.name || '',
+          email: apiInvoice.customer?.email || '',
+          phone: apiInvoice.customer?.phone || '',
+          address: (apiInvoice.customer as any)?.address
         },
-        salesperson: apiInvoice.salesperson ? {
-          id: apiInvoice.salesperson.id,
-          name: apiInvoice.salesperson.name,
-          email: apiInvoice.salesperson.email,
-          position: apiInvoice.salesperson.position,
-          department: apiInvoice.salesperson.department
+        salesperson: (apiInvoice as any).salesperson ? {
+          id: (apiInvoice as any).salesperson.id || '',
+          name: (apiInvoice as any).salesperson.name || '',
+          email: (apiInvoice as any).salesperson.email || '',
+          position: (apiInvoice as any).salesperson.position || '',
+          department: (apiInvoice as any).salesperson.department || ''
         } : undefined,
-        issueDate: apiInvoice.issueDate,
-        dueDate: apiInvoice.dueDate,
-        subtotal: parseFloat(apiInvoice.subtotal),
-        taxAmount: parseFloat(apiInvoice.taxAmount),
-        totalAmount: parseFloat(apiInvoice.totalAmount),
-        paidAmount: parseFloat(apiInvoice.paidAmount),
-        status: apiInvoice.status,
-        currency: apiInvoice.currency,
+        issueDate: apiInvoice.issueDate || '',
+        dueDate: apiInvoice.dueDate || '',
+        subtotal: parseFloat(apiInvoice.subtotal?.toString() || '0') || 0,
+        taxAmount: parseFloat(apiInvoice.taxAmount?.toString() || '0') || 0,
+        totalAmount: parseFloat(apiInvoice.totalAmount?.toString() || '0') || 0,
+        paidAmount: parseFloat(apiInvoice.paidAmount?.toString() || '0') || 0,
+        status: apiInvoice.status || 'DRAFT',
+        currency: apiInvoice.currency || 'MMK',
         notes: apiInvoice.notes || '',
         termsConditions: apiInvoice.termsConditions || '',
         items: apiInvoice.items.map((item: any) => ({
-          id: item.id,
-          description: item.description,
-          quantity: parseFloat(item.quantity),
-          unitPrice: parseFloat(item.unitPrice),
-          taxRate: parseFloat(item.taxRate),
-          totalPrice: parseFloat(item.totalPrice)
+          id: item.id || '',
+          description: item.description || '',
+          quantity: parseFloat(item.quantity?.toString() || '0') || 0,
+          unitPrice: parseFloat(item.unitPrice?.toString() || '0') || 0,
+          taxRate: parseFloat(item.taxRate?.toString() || '0') || 0,
+          totalPrice: parseFloat(item.totalPrice?.toString() || '0') || 0
         })),
-        payments: apiInvoice.payments || []
+        payments: (apiInvoice as any).payments || []
       };
 
       // Fetch journal entries for this invoice (ALE accounting)

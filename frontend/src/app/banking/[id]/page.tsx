@@ -27,7 +27,7 @@ import {
   Plus
 } from 'lucide-react';
 
-const API_URL = '/api/v1';
+const API_URL = 'http://localhost:3001/api/v1';
 
 interface BankAccount {
   id: string;
@@ -386,14 +386,24 @@ const BankingDetailsPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Enhanced Account Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Current Balance</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(balanceSummary?.closingBalance || account.balance, account.currency)}
-                </p>
+          <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg shadow-sm border border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <DollarSign className="h-10 w-10 text-blue-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-blue-700">Current Balance</p>
+                  <p className="text-3xl font-bold text-blue-900">
+                    {formatCurrency(balanceSummary?.closingBalance || account.balance, account.currency)}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-blue-600 font-medium">Account Status</p>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  account.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {account.isActive ? 'Active' : 'Inactive'}
+                </span>
               </div>
             </div>
           </div>
@@ -404,7 +414,7 @@ const BankingDetailsPage: React.FC = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Reconciled Balance</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(0, account.currency)}
+                  {formatCurrency(account.reconciledBalance || 0, account.currency)}
                 </p>
               </div>
             </div>
@@ -416,7 +426,7 @@ const BankingDetailsPage: React.FC = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Unreconciled</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  0
+                  {account.unreconciledTransactions || 0}
                 </p>
               </div>
             </div>
@@ -428,7 +438,7 @@ const BankingDetailsPage: React.FC = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Last Reconciled</p>
                 <p className="text-sm font-bold text-gray-900">
-                  Never
+                  {account.lastReconciled ? new Date(account.lastReconciled).toLocaleDateString() : 'Never'}
                 </p>
               </div>
             </div>
@@ -448,33 +458,125 @@ const BankingDetailsPage: React.FC = () => {
         </div>
 
         {/* Reconciliation Summary */}
-        {reconciliation && (
-          <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Reconciliation Summary</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div>
-                <p className="text-sm text-gray-600">Statement Balance</p>
-                <p className="text-lg font-semibold">{formatCurrency(0)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Book Balance</p>
-                <p className="text-lg font-semibold">{formatCurrency(0)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Difference</p>
-                <p className="text-lg font-semibold text-green-600">
-                  {formatCurrency(0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Status</p>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  reconciled
-                </span>
-              </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Reconciliation Summary</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div>
+              <p className="text-sm text-gray-600">Statement Balance</p>
+              <p className="text-lg font-semibold">{formatCurrency(account.balance, account.currency)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Book Balance</p>
+              <p className="text-lg font-semibold">{formatCurrency(account.reconciledBalance || 0, account.currency)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Difference</p>
+              <p className={`text-lg font-semibold ${(account.balance - (account.reconciledBalance || 0)) === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatCurrency(account.balance - (account.reconciledBalance || 0), account.currency)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Status</p>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                (account.balance - (account.reconciledBalance || 0)) === 0 
+                  ? 'bg-green-100 text-green-800' 
+                  : 'bg-yellow-100 text-yellow-800'
+              }`}>
+                {(account.balance - (account.reconciledBalance || 0)) === 0 ? 'Reconciled' : 'Pending'}
+              </span>
             </div>
           </div>
-        )}
+        </div>
+
+        {/* Balance Control Section */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Balance Control</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Adjust Statement Balance
+              </label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0.00"
+                  value={account.balance}
+                  onChange={(e) => {
+                    const newBalance = parseFloat(e.target.value) || 0;
+                    setAccount(prev => prev ? { ...prev, balance: newBalance } : null);
+                  }}
+                />
+                <span className="text-sm text-gray-500">{account.currency}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Update the bank statement balance</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reconciled Balance
+              </label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0.00"
+                  value={account.reconciledBalance || 0}
+                  onChange={(e) => {
+                    const newReconciledBalance = parseFloat(e.target.value) || 0;
+                    setAccount(prev => prev ? { ...prev, reconciledBalance: newReconciledBalance } : null);
+                  }}
+                />
+                <span className="text-sm text-gray-500">{account.currency}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Your book balance after reconciliation</p>
+            </div>
+
+            <div className="flex items-end space-x-2">
+              <button
+                onClick={() => {
+                  // Auto-reconcile by setting reconciled balance equal to current balance
+                  setAccount(prev => prev ? { ...prev, reconciledBalance: prev.balance } : null);
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                Auto Reconcile
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    // Save balance changes to backend
+                    const response = await fetch(`${API_URL}/banking/payment-methods/${account.id}`, {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'X-Tenant-ID': 'default'
+                      },
+                      body: JSON.stringify({
+                        balance: account.balance,
+                        reconciledBalance: account.reconciledBalance
+                      })
+                    });
+                    
+                    if (response.ok) {
+                      alert('Balance updated successfully!');
+                    } else {
+                      alert('Failed to update balance');
+                    }
+                  } catch (error) {
+                    console.error('Error updating balance:', error);
+                    alert('Error updating balance');
+                  }
+                }}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Enhanced Transactions Section */}
         <div className="bg-white rounded-lg shadow-sm border">

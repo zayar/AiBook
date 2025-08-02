@@ -178,24 +178,96 @@ model Customer {
 }
 
 model Vendor {
-  id           String     @id @default(cuid())
-  name         String
-  email        String?
-  phone        String?
-  address      Json?
-  taxId        String?
-  paymentTerms Int        @default(30)
-  tenantId     String
-  isActive     Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  bills        Bill[]
-  purchases    Purchase[]
-  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id             String              @id @default(cuid())
+  name           String
+  displayName    String?             // Display name for vendor
+  email          String?
+  phone          String?
+  website        String?
+  
+  // Primary Contact
+  primaryContact Json?               // { salutation, firstName, lastName, workPhone, mobile }
+  
+  // Company Details
+  companyId      String?
+  taxRate        String?             // Tax rate ID or percentage
+  currency       String              @default("MMK")
+  
+  // Payment Terms
+  paymentTerms   PaymentTerms        @default(DUE_ON_RECEIPT)
+  openingBalance Decimal?            @db.Decimal(15, 2)
+  
+  // Portal Access
+  enablePortal   Boolean             @default(false)
+  portalLanguage String              @default("English")
+  
+  // Billing Address
+  billingAddress Json?               // { attention, country, address, city, state, zipCode, phone, fax }
+  
+  // Shipping Address  
+  shippingAddress Json?              // { attention, country, address, city, state, zipCode, phone, fax }
+  
+  // Business Details
+  taxId          String?
+  remarks        String?             // Additional notes or remarks about the vendor
+  tenantId       String
+  isActive       Boolean             @default(true)
+  
+  // Audit fields
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  
+  // Relations
+  bills          Bill[]
+  purchases      Purchase[]
+  contactPersons VendorContactPerson[]
+  documents      VendorDocument[]
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, email])
   @@index([tenantId, name])
+  @@index([tenantId, isActive])
   @@map("vendors")
+}
+
+model VendorContactPerson {
+  id          String   @id @default(cuid())
+  vendorId    String
+  salutation  String?  // Mr, Ms, Mrs, Dr, etc.
+  firstName   String
+  lastName    String
+  email       String?
+  workPhone   String?
+  mobile      String?
+  department  String?
+  designation String?
+  isPrimary   Boolean  @default(false)
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, email])
+  @@index([vendorId])
+  @@map("vendor_contact_persons")
+}
+
+model VendorDocument {
+  id          String   @id @default(cuid())
+  vendorId    String
+  fileName    String
+  fileUrl     String
+  fileSize    Int?     // File size in bytes
+  mimeType    String?
+  description String?
+  tenantId    String
+  uploadedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@map("vendor_documents")
 }
 
 model Salesperson {
@@ -909,6 +981,17 @@ enum PaymentReceivedMode {
   MOBILE_PAYMENT
   ONLINE_TRANSFER
   OTHER
+}
+
+enum PaymentTerms {
+  DUE_ON_RECEIPT
+  NET_15
+  NET_30
+  NET_45
+  NET_60
+  NET_90
+  ADVANCE_PAYMENT
+  CUSTOM
 }
 
 enum DepositType {

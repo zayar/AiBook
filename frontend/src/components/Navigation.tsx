@@ -32,7 +32,8 @@ import {
   Package,
   Building2,
   Calculator,
-  UserCheck
+  UserCheck,
+  Building
 } from 'lucide-react'
 
 const navigation = [
@@ -41,6 +42,8 @@ const navigation = [
   { name: 'Invoices', href: '/invoices', icon: Receipt, badge: 'New' },
   { name: 'Payment Received', href: '/payments-received', icon: CreditCard, badge: 'Money' },
   { name: 'Customers', href: '/customers', icon: Users, badge: 'Sales' },
+  { name: 'Vendors', href: '/vendors', icon: Building, badge: 'Suppliers' },
+  { name: 'Bills', href: '/bills', icon: FileText, badge: 'Payables' },
   { name: 'Salespeople', href: '/salespeople', icon: UserCheck, badge: 'Team' },
   { name: 'Items', href: '/items', icon: Package, badge: 'Inventory' },
   { name: 'Taxes', href: '/taxes', icon: Calculator, badge: 'VAT' },

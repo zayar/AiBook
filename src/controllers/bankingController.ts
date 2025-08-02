@@ -20,7 +20,7 @@ const paymentMethodSchema = z.object({
   isActive: z.boolean().default(true)
 });
 
-class BankingController {
+export class BankingController {
   // Get all payment methods (bank accounts & credit cards)
   static async getPaymentMethods(req: Request, res: Response) {
     try {

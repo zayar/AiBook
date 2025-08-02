@@ -37,7 +37,8 @@ import {
   Lightbulb,
   TrendingUp,
   Brain,
-  UserCheck
+  UserCheck,
+  X
 } from 'lucide-react';
 
 // Types
@@ -109,7 +110,8 @@ function NewInvoiceContent() {
       quantity: 1,
       unitPrice: 0,
       taxRate: 0,
-      totalPrice: 0
+      totalPrice: 0,
+      accountCode: '4000' // Default to Sales Revenue
     }],
     discountAmount: 0,
     discountType: 'fixed',
@@ -334,7 +336,8 @@ function NewInvoiceContent() {
             quantity: item.quantity,
             unitPrice: parseFloat(item.unitPrice),
             taxRate: parseFloat(item.taxRate),
-            totalPrice: parseFloat(item.totalPrice)
+            totalPrice: parseFloat(item.totalPrice),
+            accountCode: item.accountCode || '4000' // Default to Sales Revenue if not set
           }))
         }));
       }
@@ -397,7 +400,8 @@ function NewInvoiceContent() {
       quantity: 1,
       unitPrice: 0,
       taxRate: 0,
-      totalPrice: 0
+      totalPrice: 0,
+      accountCode: '4000' // Default to Sales Revenue
     };
     setFormData(prev => ({
       ...prev,
@@ -1010,30 +1014,43 @@ function NewInvoiceContent() {
                 
                 {formData.salesperson && (
                   <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                    <div className="flex items-start space-x-3">
-                      <UserCheck className="h-5 w-5 text-green-600 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium text-green-900">{formData.salesperson.name}</h4>
-                        <div className="text-sm text-green-700 space-y-1 mt-1">
-                          {formData.salesperson.position && (
-                            <div className="flex items-center space-x-2">
-                              <span>{formData.salesperson.position}</span>
-                            </div>
-                          )}
-                          {formData.salesperson.department && (
-                            <div className="flex items-center space-x-2">
-                              <Building className="h-3 w-3" />
-                              <span>{formData.salesperson.department}</span>
-                            </div>
-                          )}
-                          {formData.salesperson.email && (
-                            <div className="flex items-center space-x-2">
-                              <Mail className="h-3 w-3" />
-                              <span>{formData.salesperson.email}</span>
-                            </div>
-                          )}
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-3">
+                        <UserCheck className="h-5 w-5 text-green-600 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-green-900">{formData.salesperson.name}</h4>
+                          <div className="text-sm text-green-700 space-y-1 mt-1">
+                            {formData.salesperson.position && (
+                              <div className="flex items-center space-x-2">
+                                <span>{formData.salesperson.position}</span>
+                              </div>
+                            )}
+                            {formData.salesperson.department && (
+                              <div className="flex items-center space-x-2">
+                                <Building className="h-3 w-3" />
+                                <span>{formData.salesperson.department}</span>
+                              </div>
+                            )}
+                            {formData.salesperson.email && (
+                              <div className="flex items-center space-x-2">
+                                <Mail className="h-3 w-3" />
+                                <span>{formData.salesperson.email}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, salesperson: undefined, salespersonId: undefined }));
+                          setSalespersonSearch('');
+                        }}
+                        className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors"
+                        title="Remove salesperson"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1451,11 +1468,11 @@ function NewInvoiceContent() {
                                 Account
                               </label>
                               <select
-                                value={item.accountCode || ''}
+                                value={item.accountCode || '4000'}
                                 onChange={(e) => updateItem(item.id, { accountCode: e.target.value })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                               >
-                                <option value="">Select an account</option>
+                                <option value="4000">4000 - Sales Revenue</option>
                                 {accounts.length > 0 ? (
                                   accounts.map(account => (
                                     <option key={account.id} value={account.code}>
@@ -1488,7 +1505,7 @@ function NewInvoiceContent() {
 
                         {/* Quantity, Rate, Tax, Total */}
                         <div className="lg:col-span-6">
-                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 min-w-0 overflow-hidden">
                             {/* Quantity */}
                             <div>
                               <label className="text-xs font-medium text-gray-700 mb-1 block">
@@ -1555,11 +1572,11 @@ function NewInvoiceContent() {
                             </div>
 
                             {/* Total Price Display */}
-                            <div>
+                            <div className="min-w-0">
                               <label className="text-xs font-medium text-gray-700 mb-1 block">
                                 Amount
                               </label>
-                              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-gray-900">
+                              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs lg:text-sm font-semibold text-gray-900 truncate">
                                 {new Intl.NumberFormat('en-US', {
                                   style: 'currency',
                                   currency: formData.currency,

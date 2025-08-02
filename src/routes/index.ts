@@ -19,6 +19,8 @@ import accountRoutes from './accountRoutes';
 import paymentMethodRoutes from './paymentMethodRoutes';
 import paymentReceivedRoutes from './paymentReceivedRoutes';
 import salespersonRoutes from './salespersonRoutes';
+import vendorRoutes from './vendorRoutes';
+import billRoutes from './billRoutes';
 
 const router = Router();
 
@@ -202,10 +204,12 @@ router.use('/ai', aiRoutes);
 
 // Business operation routes
 router.use('/customers', customerRoutes);
+router.use('/vendors', vendorRoutes);
 router.use('/salespeople', salespersonRoutes);
 router.use('/invoices', invoiceRoutes);
 router.use('/sales-orders', salesOrderRoutes);
 router.use('/purchases', purchaseRoutes);
+router.use('/bills', billRoutes);
 
 // Account management routes
 router.use('/accounts', accountRoutes);
