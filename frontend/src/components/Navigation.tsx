@@ -36,25 +36,36 @@ import {
   Building
 } from 'lucide-react'
 
+// Organized navigation structure
 const navigation = [
   { name: 'AI Dashboard', href: '/', icon: Brain, badge: 'AI' },
+  { name: 'AI Insights', href: '/ai-insights', icon: Sparkles, badge: 'ML' },
   { name: 'Transactions', href: '/transactions', icon: Activity, badge: 'Smart' },
+  { name: 'Customers', href: '/customers', icon: Users, badge: 'Sales' },
+  { name: 'Items', href: '/items', icon: Package, badge: 'Inventory' },
+  { name: 'Vendors', href: '/vendors', icon: Building, badge: 'Suppliers' },
+  { name: 'Banking', href: '/banking', icon: Building2, badge: 'Reconcile' },
+  { name: 'Salespeople', href: '/salespeople', icon: UserCheck, badge: 'Team' },
+]
+
+// Sales group
+const salesGroup = [
   { name: 'Invoices', href: '/invoices', icon: Receipt, badge: 'New' },
   { name: 'Payment Received', href: '/payments-received', icon: CreditCard, badge: 'Money' },
-  { name: 'Customers', href: '/customers', icon: Users, badge: 'Sales' },
-  { name: 'Vendors', href: '/vendors', icon: Building, badge: 'Suppliers' },
+]
+
+// Purchases group  
+const purchasesGroup = [
   { name: 'Bills', href: '/bills', icon: FileText, badge: 'Payables' },
-  { name: 'Payments Made', href: '/payments-made', icon: CreditCard, badge: 'Pay' },
   { name: 'Expenses', href: '/expenses', icon: Receipt, badge: 'Costs' },
-  { name: 'Salespeople', href: '/salespeople', icon: UserCheck, badge: 'Team' },
-  { name: 'Items', href: '/items', icon: Package, badge: 'Inventory' },
-  { name: 'Taxes', href: '/taxes', icon: Calculator, badge: 'VAT' },
-  { name: 'Banking', href: '/banking', icon: Building2, badge: 'Reconcile' },
-  { name: 'Chart of Accounts', href: '/chart-of-accounts', icon: PieChart, badge: 'ALE' },
-  { name: 'AI Insights', href: '/ai-insights', icon: Sparkles, badge: 'ML' },
+  { name: 'Payments Made', href: '/payments-made', icon: CreditCard, badge: 'Pay' },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
-  { name: 'Accounts', href: '/accounts', icon: DollarSign },
-  { name: 'Settings', href: '/settings', icon: Settings },
+]
+
+// Remaining standalone items
+const standaloneItems = [
+  { name: 'Chart of Accounts', href: '/chart-of-accounts', icon: PieChart, badge: 'ALE' },
+  { name: 'Taxes', href: '/taxes', icon: Calculator, badge: 'VAT' },
 ]
 
 const aiFeatures = [
@@ -68,6 +79,41 @@ const aiFeatures = [
 export default function Navigation() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
+
+  // Helper function to render navigation items
+  const renderNavItem = (item: any, isMobile = false) => {
+    const isActive = pathname === item.href
+    return (
+      <Link
+        key={item.name}
+        href={item.href}
+        onClick={isMobile ? () => setSidebarOpen(false) : undefined}
+        className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+          isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+        }`}
+      >
+        <item.icon className="w-5 h-5 mr-3" />
+        {item.name}
+        {item.badge && (
+          <span className="ml-auto px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+            {item.badge}
+          </span>
+        )}
+      </Link>
+    )
+  }
+
+  // Helper function to render navigation group
+  const renderNavGroup = (title: string, items: any[], isMobile = false) => (
+    <div className="mb-4">
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-4">
+        {title}
+      </h3>
+      <div className="space-y-1">
+        {items.map((item) => renderNavItem(item, isMobile))}
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -112,50 +158,23 @@ export default function Navigation() {
                 </button>
               </div>
               
-              <nav className="mt-6 px-4 space-y-2">
-                {navigation.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                        isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <item.icon className="w-5 h-5 mr-3" />
-                      {item.name}
-                      {item.badge && (
-                        <span className="ml-auto px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                          {item.badge}
-                        </span>
-                      )}
-                    </Link>
-                  )
-                })}
-              </nav>
-
-              {/* AI Agents Status */}
-              <div className="mt-8 px-4">
-                <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-green-600" />
-                  AI Agents Status
-                </h3>
-                <div className="space-y-2">
-                  {aiFeatures.map((agent) => (
-                    <div key={agent.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${
-                          agent.status === 'active' ? 'bg-green-500' : 'bg-red-500'
-                        }`} />
-                        <span className="text-xs text-gray-600">{agent.name}</span>
-                      </div>
-                      <span className="text-xs font-medium text-gray-900">{agent.accuracy}%</span>
-                    </div>
-                  ))}
+              <nav className="mt-6 px-4 space-y-6 overflow-y-auto">
+                {/* Main Navigation */}
+                <div className="space-y-1">
+                  {navigation.map((item) => renderNavItem(item, true))}
                 </div>
-              </div>
+
+                {/* Sales Group */}
+                {renderNavGroup('Sales', salesGroup, true)}
+
+                {/* Purchases Group */}
+                {renderNavGroup('Purchases', purchasesGroup, true)}
+
+                {/* Standalone Items */}
+                <div className="space-y-1">
+                  {standaloneItems.map((item) => renderNavItem(item, true))}
+                </div>
+              </nav>
             </motion.div>
           </motion.div>
         )}
@@ -172,49 +191,23 @@ export default function Navigation() {
           </div>
         </div>
         
-        <nav className="flex-1 mt-6 px-4 space-y-2 overflow-y-auto">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                  isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <item.icon className="w-5 h-5 mr-3" />
-                {item.name}
-                {item.badge && (
-                  <span className="ml-auto px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
-        </nav>
-
-        {/* AI Agents Status */}
-        <div className="p-4 border-t border-gray-200">
-          <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-green-600" />
-            AI Agents Status
-          </h3>
-          <div className="space-y-2">
-            {aiFeatures.map((agent) => (
-              <div key={agent.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    agent.status === 'active' ? 'bg-green-500' : 'bg-red-500'
-                  }`} />
-                  <span className="text-xs text-gray-600">{agent.name}</span>
-                </div>
-                <span className="text-xs font-medium text-gray-900">{agent.accuracy}%</span>
-              </div>
-            ))}
+        <nav className="flex-1 mt-6 px-4 space-y-6 overflow-y-auto">
+          {/* Main Navigation */}
+          <div className="space-y-1">
+            {navigation.map((item) => renderNavItem(item))}
           </div>
-        </div>
+
+          {/* Sales Group */}
+          {renderNavGroup('Sales', salesGroup)}
+
+          {/* Purchases Group */}
+          {renderNavGroup('Purchases', purchasesGroup)}
+
+          {/* Standalone Items */}
+          <div className="space-y-1">
+            {standaloneItems.map((item) => renderNavItem(item))}
+          </div>
+        </nav>
 
         {/* User Profile */}
         <div className="p-4 border-t border-gray-200">
