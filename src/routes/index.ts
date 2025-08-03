@@ -25,6 +25,7 @@ import billRoutes from './billRoutes';
 import expenseRoutes from './expenseRoutes';
 import reportsRoutes from './reportsRoutes';
 import aiCopilotRoutes from './aiCopilotRoutes';
+import advancedAIRoutes from './advancedAIRoutes';
 
 const router = Router();
 
@@ -208,6 +209,7 @@ router.use('/ai', aiRoutes);
 
 // AI Copilot routes
 router.use('/ai/copilot', aiCopilotRoutes);
+router.use('/ai/advanced', advancedAIRoutes);
 
 // Business operation routes
 router.use('/customers', customerRoutes);

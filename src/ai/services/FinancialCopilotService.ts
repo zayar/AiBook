@@ -12,6 +12,10 @@ import { PrismaClient } from '@prisma/client';
 import { OpenAIService } from './OpenAIService';
 import { VectorStoreService } from './VectorStoreService';
 import { NLPEngine } from '../engines/NLPEngine';
+import { PredictiveAnalyticsEngine } from '../engines/PredictiveAnalyticsEngine';
+import { SmartInsightsEngine } from '../engines/SmartInsightsEngine';
+import { FinancialAgentOrchestrator } from '../agents/FinancialAgentOrchestrator';
+import { AnomalyDetectionEngine } from '../engines/AnomalyDetectionEngine';
 
 const prisma = new PrismaClient();
 
@@ -36,6 +40,9 @@ export interface CopilotResponse {
   relatedQueries?: string[];
   executionTime: number;
   sources?: DataSource[];
+  insights?: any[];
+  anomalies?: any[];
+  predictiveData?: any;
 }
 
 export interface VisualizationConfig {
@@ -67,11 +74,19 @@ export class FinancialCopilotService {
   private openAI: OpenAIService;
   private vectorStore: VectorStoreService;
   private nlpEngine: NLPEngine;
+  private predictiveEngine: PredictiveAnalyticsEngine;
+  private insightsEngine: SmartInsightsEngine;
+  private agentOrchestrator: FinancialAgentOrchestrator;
+  private anomalyEngine: AnomalyDetectionEngine;
 
   constructor() {
     this.openAI = new OpenAIService();
     this.vectorStore = new VectorStoreService();
     this.nlpEngine = new NLPEngine('default'); // Default tenant for NLP
+    this.predictiveEngine = new PredictiveAnalyticsEngine(prisma);
+    this.insightsEngine = new SmartInsightsEngine(prisma);
+    this.agentOrchestrator = new FinancialAgentOrchestrator(prisma);
+    this.anomalyEngine = new AnomalyDetectionEngine(prisma);
   }
 
   /**
@@ -102,9 +117,14 @@ export class FinancialCopilotService {
         financialSummary: context.financialSummary
       });
 
-      // 5. Create visualizations and actionable steps
-      const visualizations = await this.generateVisualizations(intent.intent, relevantData, context);
-      const actionableSteps = await this.generateActionableSteps(intent.intent, context, aiResponse);
+      // 5. Enhanced AI capabilities with new engines
+      const [visualizations, actionableSteps, insights, anomalies] = await Promise.all([
+        this.generateVisualizations(intent.intent, relevantData, context),
+        this.generateActionableSteps(intent.intent, context, aiResponse),
+        this.getContextualInsights(query.tenantId, intent.intent),
+        this.getRealtimeAnomalies(query.tenantId)
+      ]);
+      
       const relatedQueries = this.generateRelatedQueries(intent.intent, context);
 
       // 6. Store conversation for learning
@@ -118,7 +138,10 @@ export class FinancialCopilotService {
         actionableSteps,
         relatedQueries,
         executionTime: Date.now() - startTime,
-        sources: this.buildDataSources(relevantData)
+        sources: this.buildDataSources(relevantData),
+        insights: insights.slice(0, 5), // Top 5 insights
+        anomalies: anomalies.slice(0, 3), // Top 3 anomalies
+        predictiveData: await this.getPredictiveContext(query.tenantId, intent.intent)
       };
 
       console.log(`✅ Query processed in ${response.executionTime}ms with confidence ${response.confidence}`);
@@ -602,6 +625,91 @@ export class FinancialCopilotService {
 
   private async generateSearchSuggestions(query: string, results: SearchResult[]): Promise<string[]> {
     return [];
+  }
+
+  /**
+   * 💡 GET CONTEXTUAL INSIGHTS
+   * Get relevant insights based on query context
+   */
+  private async getContextualInsights(tenantId: string, intent: string): Promise<any[]> {
+    try {
+      const insights = await this.insightsEngine.generateComprehensiveInsights(tenantId);
+      
+      // Filter insights based on intent
+      const relevantInsights = insights.filter(insight => {
+        if (intent === 'cash_flow_inquiry') {
+          return insight.category === 'Cash Flow' || insight.type === 'risk';
+        } else if (intent === 'expense_analysis') {
+          return insight.category === 'Expenses' || insight.type === 'optimization';
+        } else if (intent === 'revenue_analysis') {
+          return insight.category === 'Revenue' || insight.type === 'opportunity';
+        }
+        return true;
+      });
+
+      return relevantInsights.slice(0, 5);
+    } catch (error) {
+      console.error('Error getting contextual insights:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 🚨 GET REALTIME ANOMALIES
+   * Get current anomalies for the tenant
+   */
+  private async getRealtimeAnomalies(tenantId: string): Promise<any[]> {
+    try {
+      const dashboard = await this.anomalyEngine.getAnomalyDashboard(tenantId);
+      return dashboard.recentAnomalies.slice(0, 3);
+    } catch (error) {
+      console.error('Error getting realtime anomalies:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 🔮 GET PREDICTIVE CONTEXT
+   * Get predictive data relevant to the query intent
+   */
+  private async getPredictiveContext(tenantId: string, intent: string): Promise<any> {
+    try {
+      if (intent === 'cash_flow_inquiry') {
+        const forecast = await this.predictiveEngine.generateCashFlowForecast(tenantId, 3);
+        return {
+          type: 'cash_flow_forecast',
+          data: forecast.slice(0, 3),
+          confidence: 0.85
+        };
+      } else if (intent === 'revenue_analysis') {
+        const projections = await this.predictiveEngine.generateRevenueProjections(tenantId, 6);
+        return {
+          type: 'revenue_projections',
+          data: projections.slice(0, 6),
+          confidence: 0.82
+        };
+      } else if (intent === 'expense_analysis') {
+        const optimization = await this.predictiveEngine.analyzeExpenseOptimization(tenantId);
+        return {
+          type: 'expense_optimization',
+          data: optimization.optimizationOpportunities.slice(0, 3),
+          confidence: 0.88
+        };
+      }
+
+      return {
+        type: 'general_predictions',
+        data: {},
+        confidence: 0.7
+      };
+    } catch (error) {
+      console.error('Error getting predictive context:', error);
+      return {
+        type: 'error',
+        data: {},
+        confidence: 0.0
+      };
+    }
   }
 }
 
