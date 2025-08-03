@@ -364,7 +364,7 @@ export default function Salespeople() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="space-y-1">
-                        {person.performance?.targetProgress !== undefined ? (
+                        {person.performance?.targetProgress != null ? (
                           <>
                             <div className={`text-sm font-medium ${getPerformanceColor(person.performance.targetProgress)}`}>
                               {person.performance.targetProgress.toFixed(1)}%
@@ -376,7 +376,7 @@ export default function Salespeople() {
                               ></div>
                             </div>
                             <div className="text-xs text-gray-500">
-                              {formatCurrency(person.performance.currentMonthSales)} / {formatCurrency(person.target || 0)}
+                              {formatCurrency(person.performance.currentMonthSales || 0)} / {formatCurrency(person.target || 0)}
                             </div>
                           </>
                         ) : (

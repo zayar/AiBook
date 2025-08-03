@@ -284,23 +284,24 @@ export class BillController {
           }
         });
 
-        // Create bill items
-        const billItems = await Promise.all(
-          calculatedItems.map(item =>
-            tx.billItem.create({
-              data: {
-                billId: bill.id,
-                description: item.description,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                totalPrice: item.totalPrice,
-                taxRate: item.taxRate,
-                accountCode: item.accountCode || '6000', // Default to Office Expenses
-                tenantId
-              }
-            })
-          )
-        );
+        // Create bill items using createMany for better performance
+        await tx.billItem.createMany({
+          data: calculatedItems.map(item => ({
+            billId: bill.id,
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            taxRate: item.taxRate,
+            accountCode: item.accountCode || '6000', // Default to Office Expenses
+            tenantId
+          }))
+        });
+
+        // Fetch the created bill items for journal entries
+        const billItems = await tx.billItem.findMany({
+          where: { billId: bill.id }
+        });
 
         // Create journal entries for double-entry accounting
         await BillController.createJournalEntries(tx, bill, billItems, tenantId);
@@ -323,6 +324,8 @@ export class BillController {
         });
 
         return completeBill;
+      }, {
+        timeout: 15000, // 15 seconds timeout instead of 5 seconds
       });
 
       res.status(201).json({
@@ -354,6 +357,8 @@ export class BillController {
     try {
       // Get required accounts in a single batch query
       const requiredAccountCodes = ['2000', '1103', '6000', ...billItems.map(item => item.accountCode).filter(Boolean)];
+      const uniqueAccountCodes = [...new Set(requiredAccountCodes)]; // Remove duplicates
+      
       const [book, accounts] = await Promise.all([
         tx.book.findFirst({
           where: { tenantId },
@@ -362,7 +367,7 @@ export class BillController {
         tx.account.findMany({
           where: { 
             tenantId,
-            code: { in: requiredAccountCodes }
+            code: { in: uniqueAccountCodes }
           }
         })
       ]);
@@ -387,19 +392,19 @@ export class BillController {
         let expenseAccount = accountMap.get(item.accountCode) || accountMap.get('6000') as any;
         
         if (!expenseAccount) {
-          throw new Error(`Expense account not found for item: ${item.description}`);
+          throw new Error(`Expense account (${item.accountCode}) not found for item: ${item.description}`);
         }
 
         // Debit: Expense/Asset Account (increase expense/asset)
         entries.push({
           accountId: expenseAccount.id,
           bookId: book.id,
-          amount: item.totalPrice,
+          amount: Number(item.totalPrice),
           type: 'DEBIT',
           memo: `Bill ${bill.billNumber}: ${item.description}`,
           reference: bill.billNumber,
           journalId: journalId,
-          postedAt: bill.billDate,
+          postedAt: new Date(bill.billDate),
           tenantId
         });
       }
@@ -412,12 +417,12 @@ export class BillController {
           entries.push({
             accountId: taxAccount.id,
             bookId: book.id,
-            amount: bill.taxAmount,
+            amount: Number(bill.taxAmount),
             type: 'DEBIT',
             memo: `Bill ${bill.billNumber}: Input Tax`,
             reference: bill.billNumber,
             journalId: journalId,
-            postedAt: bill.billDate,
+            postedAt: new Date(bill.billDate),
             tenantId
           });
         }
@@ -427,12 +432,12 @@ export class BillController {
       entries.push({
         accountId: accountsPayableAccount.id,
         bookId: book.id,
-        amount: bill.totalAmount,
+        amount: Number(bill.totalAmount),
         type: 'CREDIT',
         memo: `Bill ${bill.billNumber}: Amount due to vendor`,
         reference: bill.billNumber,
         journalId: journalId,
-        postedAt: bill.billDate,
+        postedAt: new Date(bill.billDate),
         tenantId
       });
 

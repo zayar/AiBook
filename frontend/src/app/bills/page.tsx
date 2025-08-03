@@ -116,12 +116,66 @@ const BillsPage = () => {
 
   if (loading && bills.length === 0) {
     return (
-      <div className="p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="space-y-4">
+      <div className="p-6 bg-white min-h-screen">
+        {/* Header Skeleton */}
+        <div className="animate-pulse mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <div className="h-8 bg-gray-200 rounded w-32 mb-2"></div>
+              <div className="h-4 bg-gray-200 rounded w-64"></div>
+            </div>
+            <div className="h-10 bg-gray-200 rounded w-24"></div>
+          </div>
+        </div>
+
+        {/* Statistics Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-200 rounded w-20 mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-16"></div>
+                </div>
+                <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Search and Filter Skeleton */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 animate-pulse">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <div className="h-10 bg-gray-200 rounded"></div>
+            </div>
+            <div className="w-32 h-10 bg-gray-200 rounded"></div>
+            <div className="w-24 h-10 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+
+        {/* Table Skeleton */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden animate-pulse">
+          <div className="p-6 border-b border-gray-200">
+            <div className="h-6 bg-gray-200 rounded w-32"></div>
+          </div>
+          <div className="divide-y divide-gray-200">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
+              <div key={i} className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4 flex-1">
+                    <div className="h-4 bg-gray-200 rounded w-24"></div>
+                    <div className="h-4 bg-gray-200 rounded w-32"></div>
+                    <div className="h-4 bg-gray-200 rounded w-20"></div>
+                    <div className="h-4 bg-gray-200 rounded w-16"></div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="h-8 bg-gray-200 rounded w-16"></div>
+                    <div className="h-8 bg-gray-200 rounded w-8"></div>
+                    <div className="h-8 bg-gray-200 rounded w-8"></div>
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -131,6 +185,15 @@ const BillsPage = () => {
 
   return (
     <div className="p-6 space-y-6 bg-white min-h-screen">
+      {/* Loading Overlay for Refresh */}
+      {loading && bills.length > 0 && (
+        <div className="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Refreshing bills...</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

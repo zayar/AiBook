@@ -207,6 +207,31 @@ export default function InvoiceDetailPage() {
     }
   };
 
+  const handleSendInvoice = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${invoiceId}/send`, {
+        method: 'POST',
+        headers: { 
+          'X-Tenant-ID': 'default',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        console.log('✅ Invoice sent successfully');
+        // Refresh the invoice details to show updated status
+        fetchInvoiceDetails();
+      } else {
+        const error = await response.json();
+        console.error('❌ Failed to send invoice:', error);
+        alert('Failed to send invoice: ' + (error.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('❌ Error sending invoice:', error);
+      alert('Error sending invoice. Please try again.');
+    }
+  };
+
   const formatCurrency = (amount: number, currency: string = 'MMK') => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -281,10 +306,15 @@ export default function InvoiceDetailPage() {
               <span>Edit</span>
             </button>
             
-            <button className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
-              <Mail className="h-4 w-4" />
-              <span>Send</span>
-            </button>
+            {invoice.status === 'DRAFT' && (
+              <button 
+                onClick={handleSendInvoice}
+                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                <Mail className="h-4 w-4" />
+                <span>Send Invoice</span>
+              </button>
+            )}
             
             <button className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
               <Download className="h-4 w-4" />

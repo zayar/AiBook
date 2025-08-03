@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
   withCredentials: false,
   headers: {
     'X-Tenant-ID': 'default',
@@ -63,6 +63,53 @@ export interface ItemsResponse {
   };
   categories: string[];
   insights?: any;
+}
+
+export interface ItemTransaction {
+  id: string;
+  type: 'invoice' | 'bill';
+  documentNumber: string;
+  date: string;
+  dueDate: string;
+  customer?: { id: string; name: string; email: string };
+  vendor?: { id: string; name: string; displayName?: string; email: string };
+  salesperson?: { id: string; name: string };
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  taxRate: number;
+  status: string;
+  currency: string;
+  invoiceTotal?: number;
+  billTotal?: number;
+  paidAmount: number;
+  createdAt: string;
+}
+
+export interface ItemTransactionStats {
+  totalInvoices: number;
+  totalBills: number;
+  totalQuantitySold: number;
+  totalQuantityPurchased: number;
+  totalSalesRevenue: number;
+  totalPurchaseCost: number;
+}
+
+export interface ItemTransactionsResponse {
+  item: {
+    id: string;
+    name: string;
+    sku: string;
+    description?: string;
+  };
+  transactions: ItemTransaction[];
+  stats: ItemTransactionStats;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
 }
 
 export class ItemAPI {
@@ -152,6 +199,28 @@ export class ItemAPI {
     } catch (error) {
       console.error('Error searching items:', error);
       return [];
+    }
+  }
+
+  /**
+   * Get item transactions (invoices and bills)
+   */
+  static async getItemTransactions(
+    itemId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      type?: 'invoices' | 'bills';
+    }
+  ): Promise<ItemTransactionsResponse> {
+    try {
+      const response = await api.get(`/items/${itemId}/transactions`, {
+        params: params || {}
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching item transactions:', error);
+      throw error;
     }
   }
 } 

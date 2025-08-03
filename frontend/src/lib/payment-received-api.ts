@@ -1,6 +1,6 @@
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? 'https://your-production-domain.com/api/v1' 
-  : 'http://localhost:3001/api/v1';
+  : 'http://localhost:3000/api/v1';
 
 export interface PaymentReceived {
   id: string;
@@ -92,7 +92,7 @@ class PaymentReceivedAPI {
   private getHeaders() {
     return {
       'Content-Type': 'application/json',
-      'x-tenant-id': 'default-tenant',
+      'x-tenant-id': 'default',
     };
   }
 
@@ -186,7 +186,7 @@ class PaymentReceivedAPI {
 
   async getUnpaidInvoices(customerId: string): Promise<{ success: boolean; data: UnpaidInvoice[] }> {
     const response = await fetch(
-      `${API_BASE_URL}/payments-received/customer/${customerId}/unpaid-invoices`,
+      `${API_BASE_URL}/payments-received/customer/${customerId}/unpaid-invoices?t=${Date.now()}`,
       {
         headers: this.getHeaders(),
       }

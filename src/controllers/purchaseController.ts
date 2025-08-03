@@ -374,14 +374,17 @@ export class PurchaseController {
           expenseDate: validatedData.expenseDate ? new Date(validatedData.expenseDate) : new Date(),
           category,
           subcategory: validatedData.subcategory,
-          vendor: validatedData.vendor,
-          accountCode,
+          vendorId: validatedData.vendor,
+          expenseAccountId: accountCode || '6000', // Default to Office Expenses
           billable: validatedData.billable,
           customerId: validatedData.customerId,
           projectId: validatedData.projectId,
           tenantId,
           userId: validatedData.userId,
-          status: 'PENDING'
+          status: 'PENDING',
+          expenseNumber: `EXP-${Date.now()}`,
+          paidThroughId: 'default-payment-method', // Default payment method
+          totalAmount: validatedData.amount
         },
         include: {
           customer: validatedData.customerId ? {

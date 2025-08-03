@@ -7,6 +7,7 @@ import {
   updateItem,
   deleteItem,
   aiItemAssistance,
+  getItemTransactions,
 } from '../controllers/itemController';
 
 const router = Router();
@@ -19,6 +20,16 @@ const router = Router();
 router.get('/',
   requirePermission('account:read'),
   listItems
+);
+
+/**
+ * 📊 GET ITEM TRANSACTIONS
+ * GET /api/v1/items/:id/transactions
+ * Retrieve all transactions (invoices, bills) related to an item
+ */
+router.get('/:id/transactions',
+  requirePermission('account:read'),
+  getItemTransactions
 );
 
 /**

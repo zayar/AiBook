@@ -37,7 +37,11 @@ export const authMiddleware = async (
              'payment:create', 'payment:update', 'payment:delete', 'payment:read',
              'invoice:create', 'invoice:update', 'invoice:delete', 'invoice:read',
              'customer:create', 'customer:update', 'customer:delete', 'customer:read',
-             'item:create', 'item:update', 'item:delete', 'item:read'
+             'item:create', 'item:update', 'item:delete', 'item:read',
+             'expense:create', 'expense:update', 'expense:delete', 'expense:read', 'expense:approve',
+             'bill:create', 'bill:update', 'bill:delete', 'bill:read',
+             'vendor:create', 'vendor:update', 'vendor:delete', 'vendor:read',
+             'vendor-payment:create', 'vendor-payment:update', 'vendor-payment:delete', 'vendor-payment:read'
            ]
           };
           return next();
@@ -65,7 +69,11 @@ export const authMiddleware = async (
              'payment:create', 'payment:update', 'payment:delete', 'payment:read',
              'invoice:create', 'invoice:update', 'invoice:delete', 'invoice:read',
              'customer:create', 'customer:update', 'customer:delete', 'customer:read',
-             'item:create', 'item:update', 'item:delete', 'item:read'
+             'item:create', 'item:update', 'item:delete', 'item:read',
+             'expense:create', 'expense:update', 'expense:delete', 'expense:read', 'expense:approve',
+             'bill:create', 'bill:update', 'bill:delete', 'bill:read',
+             'vendor:create', 'vendor:update', 'vendor:delete', 'vendor:read',
+             'vendor-payment:create', 'vendor-payment:update', 'vendor-payment:delete', 'vendor-payment:read'
            ]
          };
          return next();

@@ -55,6 +55,10 @@ export class AccountingService {
     return await this.journalEngine.createExpenseEntries(expense);
   }
 
+  async handleInvoiceStatusChange(invoice: any, oldStatus: string, newStatus: string) {
+    return await this.journalEngine.handleInvoiceStatusChange(invoice, oldStatus, newStatus);
+  }
+
   async createJournalEntry(entryData: any) {
     return await this.journalEngine.createJournalEntry(entryData);
   }

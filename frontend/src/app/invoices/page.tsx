@@ -137,7 +137,7 @@ export default function InvoicesPage() {
 
   const fetchAIInsights = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ai/insights?period=3m`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/ai/insights?period=3m`);
       if (response.ok) {
         const data = await response.json();
         
@@ -241,7 +241,32 @@ export default function InvoicesPage() {
     });
   };
 
-  const handleInvoiceAction = (action: string, invoiceId: string) => {
+  const handleSendInvoice = async (invoiceId: string) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${invoiceId}/send`, {
+        method: 'POST',
+        headers: { 
+          'X-Tenant-ID': 'default',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        console.log('✅ Invoice sent successfully');
+        // Refresh the invoice list to show updated status
+        fetchInvoices();
+      } else {
+        const error = await response.json();
+        console.error('❌ Failed to send invoice:', error);
+        alert('Failed to send invoice: ' + (error.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('❌ Error sending invoice:', error);
+      alert('Error sending invoice. Please try again.');
+    }
+  };
+
+  const handleInvoiceAction = async (action: string, invoiceId: string) => {
     switch (action) {
       case 'view':
         router.push(`/invoices/${invoiceId}`);
@@ -254,8 +279,7 @@ export default function InvoicesPage() {
         console.log('Duplicate invoice:', invoiceId);
         break;
       case 'send':
-        // TODO: Implement send functionality
-        console.log('Send invoice:', invoiceId);
+        await handleSendInvoice(invoiceId);
         break;
       case 'delete':
         // TODO: Implement delete functionality
@@ -487,14 +511,16 @@ export default function InvoicesPage() {
                            <FileText className="h-4 w-4" />
                            <span>Duplicate</span>
                          </button>
-                         <button
-                           onClick={() => invoice.id && handleInvoiceAction('send', invoice.id)}
-                           className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                           disabled={!invoice.id}
-                         >
-                           <Mail className="h-4 w-4" />
-                           <span>Send</span>
-                         </button>
+                                                 {invoice.status === 'DRAFT' && (
+                          <button
+                            onClick={() => invoice.id && handleInvoiceAction('send', invoice.id)}
+                            className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 flex items-center space-x-2"
+                            disabled={!invoice.id}
+                          >
+                            <Mail className="h-4 w-4" />
+                            <span>Send Invoice</span>
+                          </button>
+                        )}
                          <button
                            onClick={() => invoice.id && handleInvoiceAction('delete', invoice.id)}
                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"

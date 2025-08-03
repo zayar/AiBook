@@ -202,11 +202,19 @@ export class ChartOfAccountsEngine {
     });
     
     if (!book) {
+      // Get tenant's base currency
+      const tenant = await prisma.tenant.findFirst({
+        where: { id: this.tenantId },
+        select: { baseCurrency: true }
+      });
+
+      const baseCurrency = tenant?.baseCurrency || 'MMK';
+
       // Create default book if it doesn't exist
       const newBook = await prisma.book.create({
         data: {
           name: 'General Ledger',
-          currency: 'USD',
+          currency: baseCurrency,
           tenantId: this.tenantId
         }
       });

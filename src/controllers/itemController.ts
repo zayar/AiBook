@@ -738,6 +738,168 @@ async function analyzeItemUpdate(existingItem: any, updateData: any, tenantId: s
 }
 
 /**
+ * 📊 GET ITEM TRANSACTIONS
+ * Fetch all transactions (invoices, bills) related to a specific item
+ */
+export const getItemTransactions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tenantId = req.tenant?.tenantId;
+    if (!tenantId) {
+      res.status(400).json({ error: 'Tenant ID is required' });
+      return;
+    }
+
+    const { id } = req.params;
+    
+    // Parse query parameters for pagination and filtering
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const transactionType = req.query.type as string; // 'invoices', 'bills', or undefined for all
+    
+    const skip = (page - 1) * limit;
+
+    // First verify the item exists
+    const item = await prisma.inventoryItem.findFirst({
+      where: { id, tenantId },
+      select: { id: true, name: true, sku: true, description: true }
+    });
+
+    if (!item) {
+      res.status(404).json({ error: 'Item not found' });
+      return;
+    }
+
+    // Fetch invoice transactions
+    let invoiceTransactions: any[] = [];
+    if (!transactionType || transactionType === 'invoices') {
+      const invoiceItems = await prisma.invoiceItem.findMany({
+        where: { 
+          inventoryItemId: id,
+          tenantId
+        },
+        include: {
+          invoice: {
+            include: {
+              customer: {
+                select: { id: true, name: true, email: true }
+              },
+              salesperson: {
+                select: { id: true, name: true }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: transactionType === 'invoices' ? limit : undefined,
+        skip: transactionType === 'invoices' ? skip : 0
+      });
+
+      invoiceTransactions = invoiceItems.map((item: any) => ({
+        id: item.invoice.id,
+        type: 'invoice',
+        documentNumber: item.invoice.invoiceNumber,
+        date: item.invoice.issueDate,
+        dueDate: item.invoice.dueDate,
+        customer: item.invoice.customer,
+        salesperson: item.invoice.salesperson,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+        totalPrice: Number(item.totalPrice),
+        taxRate: Number(item.taxRate),
+        status: item.invoice.status,
+        currency: item.invoice.currency,
+        invoiceTotal: Number(item.invoice.totalAmount),
+        paidAmount: Number(item.invoice.paidAmount),
+        createdAt: item.createdAt
+      }));
+    }
+
+    // Fetch bill transactions
+    let billTransactions: any[] = [];
+    if (!transactionType || transactionType === 'bills') {
+      const billItems = await prisma.billItem.findMany({
+        where: { 
+          inventoryItemId: id,
+          tenantId
+        },
+        include: {
+          bill: {
+            include: {
+              vendor: {
+                select: { id: true, name: true, displayName: true, email: true }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: transactionType === 'bills' ? limit : undefined,
+        skip: transactionType === 'bills' ? skip : 0
+      });
+
+      billTransactions = billItems.map((item: any) => ({
+        id: item.bill.id,
+        type: 'bill',
+        documentNumber: item.bill.billNumber,
+        date: item.bill.billDate,
+        dueDate: item.bill.dueDate,
+        vendor: item.bill.vendor,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
+        totalPrice: Number(item.totalPrice),
+        taxRate: Number(item.taxRate),
+        status: item.bill.status,
+        currency: item.bill.currency,
+        billTotal: Number(item.bill.totalAmount),
+        paidAmount: Number(item.bill.paidAmount),
+        createdAt: item.createdAt
+      }));
+    }
+
+    // Combine and sort all transactions by date
+    const allTransactions = [...invoiceTransactions, ...billTransactions]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // Apply pagination if showing all transaction types
+    const paginatedTransactions = !transactionType 
+      ? allTransactions.slice(skip, skip + limit)
+      : allTransactions;
+
+    // Calculate statistics
+    const stats = {
+      totalInvoices: invoiceTransactions.length,
+      totalBills: billTransactions.length,
+      totalQuantitySold: invoiceTransactions.reduce((sum, t) => sum + t.quantity, 0),
+      totalQuantityPurchased: billTransactions.reduce((sum, t) => sum + t.quantity, 0),
+      totalSalesRevenue: invoiceTransactions.reduce((sum, t) => sum + t.totalPrice, 0),
+      totalPurchaseCost: billTransactions.reduce((sum, t) => sum + t.totalPrice, 0)
+    };
+
+    // Count totals for pagination
+    const totalTransactions = !transactionType 
+      ? allTransactions.length
+      : (transactionType === 'invoices' ? invoiceTransactions.length : billTransactions.length);
+
+    res.json({
+      item,
+      transactions: paginatedTransactions,
+      stats,
+      pagination: {
+        page,
+        limit,
+        total: totalTransactions,
+        pages: Math.ceil(totalTransactions / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching item transactions:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to fetch item transactions' 
+    });
+  }
+};
+
+/**
  * 🔧 UTILITY: Generate fallback SKU
  * Simple fallback SKU generation when AI fails
  */

@@ -20,6 +20,7 @@ const createInvoiceSchema = z.object({
   recurring: z.boolean().default(false),
   recurringInterval: z.enum(['monthly', 'quarterly', 'yearly']).optional(),
   salesOrderId: z.string().optional(),
+  status: z.enum(['DRAFT', 'SENT']).default('DRAFT'),
   items: z.array(z.object({
     inventoryItemId: z.string().optional(), // Link to inventory item
     description: z.string(),
@@ -108,7 +109,7 @@ class InvoiceController {
           recurring: validatedData.recurring,
           recurringInterval: validatedData.recurringInterval,
           salesOrderId: validatedData.salesOrderId,
-          status: 'SENT', // Immediately move to receivables state per ALE accounting
+          status: validatedData.status, // Use status from request (DRAFT or SENT)
           items: {
             create: validatedData.items.map(item => ({
               inventoryItemId: item.inventoryItemId || null,
@@ -154,19 +155,28 @@ class InvoiceController {
       //   }
       // }
 
-      // Create journal entries for revenue recognition (ALE accounting flow)
-      const accountingService = new AccountingService({ tenantId });
-      const journalEntries = await accountingService.createInvoiceJournalEntries(invoice);
-      
-      console.log('✅ Journal entries created:', journalEntries);
+      // Create journal entries only if status is SENT
+      let journalEntries = null;
+      if (validatedData.status === 'SENT') {
+        const accountingService = new AccountingService({ tenantId });
+        journalEntries = await accountingService.createInvoiceJournalEntries(invoice);
+        console.log('✅ Invoice created as SENT - journal entries created');
+      } else {
+        console.log('✅ Invoice created as DRAFT - no journal entries created');
+      }
 
       res.status(201).json({
         message: 'Invoice created successfully',
         invoice,
         journalEntries: journalEntries,
+        accountingNote: validatedData.status === 'SENT' 
+          ? 'Journal entries created for revenue recognition'
+          : 'Journal entries will be created when invoice is sent',
         aiEnhancements: {
           autoCategorization: 'Applied to uncoded items',
-          journalEntries: `Created ${journalEntries?.entries?.length || 0} journal entries`,
+          journalEntries: validatedData.status === 'SENT' 
+            ? `Created ${journalEntries?.entries?.length || 0} journal entries`
+            : 'Pending - will create when invoice is sent',
           complianceCheck: 'Passed'
         }
       });
@@ -187,6 +197,79 @@ class InvoiceController {
         name: errorName
       });
       res.status(500).json({ error: 'Failed to create invoice', details: errorMessage });
+    }
+  }
+
+  /**
+   * 📤 SEND INVOICE
+   * Update invoice status from DRAFT to SENT and create journal entries
+   */
+  static async sendInvoice(req: Request, res: Response): Promise<void> {
+    try {
+      const { tenantId } = req.tenant!;
+      const { id } = req.params;
+
+      // Get the invoice
+      const invoice = await prisma.invoice.findFirst({
+        where: { id, tenantId },
+        include: {
+          customer: true,
+          items: true
+        }
+      });
+
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+
+      if (invoice.status !== 'DRAFT') {
+        res.status(400).json({ 
+          error: 'Can only send invoices in DRAFT status',
+          currentStatus: invoice.status 
+        });
+        return;
+      }
+
+      // Update invoice status to SENT
+      const updatedInvoice = await prisma.invoice.update({
+        where: { id },
+        data: { status: 'SENT' },
+        include: {
+          customer: true,
+          items: true
+        }
+      });
+
+      // Create journal entries for revenue recognition (ALE accounting flow)
+      try {
+        const accountingService = new AccountingService({ tenantId });
+        const journalEntries = await accountingService.createInvoiceJournalEntries(updatedInvoice);
+        
+        console.log('✅ Invoice sent and journal entries created:', journalEntries);
+
+        res.status(200).json({
+          message: 'Invoice sent successfully',
+          invoice: updatedInvoice,
+          journalEntries: journalEntries,
+          accountingNote: 'Journal entries created for revenue recognition'
+        });
+      } catch (accountingError) {
+        console.error('❌ Accounting error during invoice send:', accountingError);
+        
+        // If journal entry creation fails, still update the invoice status but log the error
+        res.status(200).json({
+          message: 'Invoice sent successfully (journal entries failed)',
+          invoice: updatedInvoice,
+          journalEntries: null,
+          accountingNote: 'Invoice status updated but journal entry creation failed',
+          accountingError: accountingError instanceof Error ? accountingError.message : 'Unknown accounting error'
+        });
+      }
+    } catch (error) {
+      console.error('Send invoice error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: 'Failed to send invoice', details: errorMessage });
     }
   }
 
@@ -488,10 +571,10 @@ class InvoiceController {
   }
 
   /**
-   * 📧 SEND INVOICE
+   * 📧 SEND INVOICE EMAIL
    * Send invoice via email with PDF attachment
    */
-  static async sendInvoice(req: Request, res: Response): Promise<void> {
+  static async sendInvoiceEmail(req: Request, res: Response): Promise<void> {
     try {
       const tenantId = req.tenant?.tenantId;
       const { id } = req.params;
@@ -648,7 +731,7 @@ class InvoiceController {
         return;
       }
 
-      // Get invoice to get the invoice number
+      // Get invoice to get the invoice number and status
       const invoice = await prisma.invoice.findFirst({
         where: { id: invoiceId, tenantId }
       });
@@ -658,7 +741,23 @@ class InvoiceController {
         return;
       }
 
-      // Get journal entries for this invoice from database
+      // For DRAFT invoices, return empty journal entries
+      if (invoice.status === 'DRAFT') {
+        res.json({
+          message: 'No journal entries for DRAFT invoice',
+          journalEntries: [],
+          invoice: {
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            totalAmount: invoice.totalAmount,
+            status: invoice.status
+          },
+          note: 'Journal entries will be created when invoice is sent'
+        });
+        return;
+      }
+
+      // Get journal entries for this invoice from database (only for non-DRAFT invoices)
       const journalEntries = await prisma.entry.findMany({
         where: {
           tenantId,
@@ -682,7 +781,8 @@ class InvoiceController {
         invoice: {
           id: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
-          totalAmount: invoice.totalAmount
+          totalAmount: invoice.totalAmount,
+          status: invoice.status
         }
       });
     } catch (error) {

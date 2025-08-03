@@ -20,7 +20,11 @@ import paymentMethodRoutes from './paymentMethodRoutes';
 import paymentReceivedRoutes from './paymentReceivedRoutes';
 import salespersonRoutes from './salespersonRoutes';
 import vendorRoutes from './vendorRoutes';
+import vendorPaymentRoutes from './vendorPaymentRoutes';
 import billRoutes from './billRoutes';
+import expenseRoutes from './expenseRoutes';
+import reportsRoutes from './reportsRoutes';
+import aiCopilotRoutes from './aiCopilotRoutes';
 
 const router = Router();
 
@@ -202,14 +206,19 @@ router.use('/auth', authRoutes);
 // AI-powered routes
 router.use('/ai', aiRoutes);
 
+// AI Copilot routes
+router.use('/ai/copilot', aiCopilotRoutes);
+
 // Business operation routes
 router.use('/customers', customerRoutes);
 router.use('/vendors', vendorRoutes);
+router.use('/vendor-payments', vendorPaymentRoutes);
 router.use('/salespeople', salespersonRoutes);
 router.use('/invoices', invoiceRoutes);
 router.use('/sales-orders', salesOrderRoutes);
 router.use('/purchases', purchaseRoutes);
 router.use('/bills', billRoutes);
+router.use('/expenses', expenseRoutes);
 
 // Account management routes
 router.use('/accounts', accountRoutes);
@@ -234,6 +243,9 @@ router.use('/taxes', taxRoutes);
 
 // Financial reporting routes
 router.use('/reports', reportingRoutes);
+
+// Enhanced financial reports module
+router.use('/reports-new', reportsRoutes);
 
 // Transaction and accounting routes
 router.use('/transactions', transactionRoutes);

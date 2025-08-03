@@ -84,13 +84,15 @@ export default function NewPaymentReceivedPage() {
   const fetchUnpaidInvoices = async (customerId: string) => {
     try {
       setLoadingInvoices(true);
+      console.log('🔍 Fetching unpaid invoices for customer:', customerId);
       const response = await paymentReceivedAPI.getUnpaidInvoices(customerId);
+      console.log('📋 Unpaid invoices response:', response);
       setUnpaidInvoices(response.data || []);
       
       // Reset allocations when customer changes
       setInvoiceAllocations([]);
     } catch (error) {
-      console.error('Error fetching unpaid invoices:', error);
+      console.error('❌ Error fetching unpaid invoices:', error);
       setUnpaidInvoices([]);
     } finally {
       setLoadingInvoices(false);
@@ -196,12 +198,14 @@ export default function NewPaymentReceivedPage() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string = 'MMK') => {
+  const formatCurrency = (amount: number | string, currency: string = 'MMK') => {
+    const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency,
-      minimumFractionDigits: 2
-    }).format(amount);
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(numericAmount || 0);
   };
 
   if (loading) {
@@ -455,36 +459,36 @@ export default function NewPaymentReceivedPage() {
                 </div>
               ) : unpaidInvoices.length > 0 ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-6 gap-4 text-sm font-medium text-gray-500 pb-2 border-b">
-                    <div>Date</div>
-                    <div>Invoice Number</div>
-                    <div>Branch</div>
-                    <div>Invoice Amount</div>
-                    <div>Amount Due</div>
-                    <div>Payment Received On</div>
+                  <div className="grid grid-cols-6 gap-4 text-sm font-semibold text-gray-700 pb-3 border-b-2 border-gray-200 bg-gray-50 px-4 py-2 rounded-t-lg">
+                    <div className="text-blue-800">Date</div>
+                    <div className="text-blue-800">Invoice Number</div>
+                    <div className="text-blue-800">Branch</div>
+                    <div className="text-blue-800">Invoice Amount</div>
+                    <div className="text-blue-800">Amount Due</div>
+                    <div className="text-blue-800">Payment Received On</div>
                   </div>
 
                   {unpaidInvoices.map(invoice => {
                     const isAllocated = invoiceAllocations.some(a => a.invoiceId === invoice.id);
                     
                     return (
-                      <div key={invoice.id} className="grid grid-cols-6 gap-4 text-sm py-3 border-b border-gray-100">
-                        <div>{new Date(invoice.dueDate).toLocaleDateString()}</div>
-                        <div className="font-medium text-blue-600">{invoice.invoiceNumber}</div>
-                        <div>Head Office</div>
-                        <div>{formatCurrency(invoice.totalAmount)}</div>
-                        <div className="font-medium">{formatCurrency(invoice.amountDue)}</div>
-                        <div>
+                      <div key={invoice.id} className="grid grid-cols-6 gap-4 text-sm py-4 px-4 border-b border-gray-200 hover:bg-blue-50 rounded-lg">
+                        <div className="text-gray-800 bg-blue-100 px-2 py-1 rounded text-center font-medium">{new Date(invoice.dueDate).toLocaleDateString()}</div>
+                        <div className="font-semibold text-blue-700 bg-blue-100 px-2 py-1 rounded text-center">{invoice.invoiceNumber}</div>
+                        <div className="text-gray-800 bg-blue-100 px-2 py-1 rounded text-center font-medium">Head Office</div>
+                        <div className="text-gray-800 bg-blue-100 px-2 py-1 rounded text-center font-semibold">{formatCurrency(invoice.totalAmount)}</div>
+                        <div className="text-gray-800 bg-blue-200 px-2 py-1 rounded text-center font-bold">{formatCurrency(invoice.amountDue)}</div>
+                        <div className="text-center">
                           {!isAllocated ? (
                             <button
                               type="button"
                               onClick={() => addInvoiceAllocation(invoice)}
-                              className="text-blue-600 hover:text-blue-800 font-medium"
+                              className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-full font-medium text-xs transition-colors duration-200"
                             >
                               Apply Payment
                             </button>
                           ) : (
-                            <span className="text-green-600 font-medium">Applied</span>
+                            <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full font-medium text-xs">Applied</span>
                           )}
                         </div>
                       </div>
@@ -514,14 +518,15 @@ export default function NewPaymentReceivedPage() {
 
               <div className="space-y-4">
                 {invoiceAllocations.map(allocation => (
-                  <div key={allocation.invoiceId} className="flex items-center gap-4 p-4 bg-white rounded-lg">
+                  <div key={allocation.invoiceId} className="flex items-center gap-4 p-4 bg-white border-2 border-blue-200 rounded-lg shadow-sm">
                     <div className="flex-1">
-                      <div className="font-medium text-gray-900">{allocation.invoiceNumber}</div>
-                      <div className="text-sm text-gray-500">
-                        Amount Due: {formatCurrency(allocation.amountDue)}
+                      <div className="font-bold text-blue-800 text-lg">{allocation.invoiceNumber}</div>
+                      <div className="text-sm text-gray-700 font-medium">
+                        Amount Due: <span className="font-bold text-blue-600">{formatCurrency(allocation.amountDue)}</span>
                       </div>
                     </div>
-                    <div className="w-32">
+                    <div className="w-40">
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Amount</label>
                       <input
                         type="number"
                         value={allocation.amountAllocated}
@@ -529,39 +534,41 @@ export default function NewPaymentReceivedPage() {
                         step="0.01"
                         min="0"
                         max={allocation.amountDue}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-3 focus:ring-blue-200 focus:border-blue-500 text-gray-900 bg-white font-bold text-lg text-center shadow-sm"
+                        placeholder="0.00"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => removeInvoiceAllocation(allocation.invoiceId)}
-                      className="text-red-600 hover:text-red-800 p-1"
+                      className="bg-red-100 hover:bg-red-200 text-red-600 hover:text-red-800 p-2 rounded-full transition-colors duration-200"
+                      title="Remove allocation"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
                 ))}
 
-                <div className="pt-4 border-t border-gray-200">
-                  <div className="flex justify-between items-center text-sm">
-                    <span>Total:</span>
-                    <span className="font-medium">{formatCurrency(parseFloat(formData.amount) || 0)}</span>
+                <div className="pt-6 border-t-2 border-gray-300 bg-gray-50 p-4 rounded-lg">
+                  <div className="flex justify-between items-center text-base py-2">
+                    <span className="font-semibold text-gray-700">Total:</span>
+                    <span className="font-bold text-gray-900 text-lg">{formatCurrency(parseFloat(formData.amount) || 0)}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span>Amount Received:</span>
-                    <span className="font-medium">{formatCurrency(getTotalAllocated())}</span>
+                  <div className="flex justify-between items-center text-base py-2">
+                    <span className="font-semibold text-gray-700">Amount Received:</span>
+                    <span className="font-bold text-blue-600 text-lg">{formatCurrency(getTotalAllocated())}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span>Amount used for Payments:</span>
-                    <span className="font-medium">{formatCurrency(getTotalAllocated())}</span>
+                  <div className="flex justify-between items-center text-base py-2">
+                    <span className="font-semibold text-gray-700">Amount used for Payments:</span>
+                    <span className="font-bold text-green-600 text-lg">{formatCurrency(getTotalAllocated())}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span>Amount Refunded:</span>
-                    <span className="font-medium">MMK 0.00</span>
+                  <div className="flex justify-between items-center text-base py-2">
+                    <span className="font-semibold text-gray-700">Amount Refunded:</span>
+                    <span className="font-bold text-gray-600 text-lg">MMK 0.00</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm font-medium text-red-600">
+                  <div className="flex justify-between items-center text-lg py-3 font-bold text-red-700 bg-red-50 px-3 rounded border-l-4 border-red-400">
                     <span>Amount in Excess:</span>
-                    <span>{formatCurrency(Math.max(0, getUnallocatedAmount()))}</span>
+                    <span className="text-xl">{formatCurrency(Math.max(0, getUnallocatedAmount()))}</span>
                   </div>
                 </div>
               </div>

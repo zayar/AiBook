@@ -1,0 +1,745 @@
+import { Request, Response } from 'express';
+import { z } from 'zod';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+// Validation schemas
+const CreateVendorPaymentSchema = z.object({
+  vendorId: z.string().min(1, 'Vendor is required'),
+  amount: z.number().positive('Amount must be positive'),
+  bankCharges: z.number().default(0),
+  paymentDate: z.string().optional(),
+  paymentMode: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_PAYMENT', 'OTHER']).default('CASH'),
+  paidThroughId: z.string().min(1, 'Payment account is required'),
+  referenceNumber: z.string().optional(),
+  taxDeducted: z.boolean().default(false),
+  taxAmount: z.number().default(0),
+  notes: z.string().optional(),
+  internalNotes: z.string().optional(),
+  billPayments: z.array(z.object({
+    billId: z.string(),
+    amount: z.number().positive()
+  })).optional(),
+  branch: z.string().optional(),
+});
+
+const UpdateVendorPaymentSchema = CreateVendorPaymentSchema.partial();
+
+const VendorPaymentListSchema = z.object({
+  page: z.string().optional().transform(val => val ? parseInt(val) : 1),
+  limit: z.string().optional().transform(val => val ? parseInt(val) : 20),
+  search: z.string().optional(),
+  vendorId: z.string().optional(),
+  paymentMode: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_PAYMENT', 'OTHER']).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  sortBy: z.enum(['paymentDate', 'amount', 'paymentNumber', 'createdAt']).optional().default('paymentDate'),
+  sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+});
+
+/**
+ * 💰 LIST ALL VENDOR PAYMENTS WITH ADVANCED FILTERING
+ * GET /api/v1/vendor-payments
+ * Returns vendor payments with pagination, search, and filtering
+ */
+export const listVendorPayments = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+    
+    const query = VendorPaymentListSchema.parse(req.query);
+    const { page, limit, search, vendorId, paymentMode, startDate, endDate, sortBy, sortOrder } = query;
+    
+    const skip = (page - 1) * limit;
+
+    // Build where clause
+    const where: any = {
+      tenantId,
+      ...(vendorId && { vendorId }),
+      ...(paymentMode && { paymentMode }),
+      ...(startDate && endDate && {
+        paymentDate: {
+          gte: new Date(startDate),
+          lte: new Date(endDate)
+        }
+      }),
+      ...(search && {
+        OR: [
+          { paymentNumber: { contains: search } },
+          { referenceNumber: { contains: search } },
+          { notes: { contains: search } },
+          { vendor: { name: { contains: search } } },
+        ]
+      })
+    };
+
+    // Get vendor payments with relations
+    const [vendorPayments, total] = await Promise.all([
+      prisma.vendorPayment.findMany({
+        where,
+        include: {
+          vendor: {
+            select: { id: true, name: true, displayName: true }
+          },
+          paidThrough: {
+            select: { id: true, accountNumber: true, name: true, type: true }
+          },
+          billPayments: {
+            include: {
+              bill: {
+                select: { id: true, billNumber: true, totalAmount: true }
+              }
+            }
+          }
+        },
+        orderBy: { [sortBy]: sortOrder },
+        skip,
+        take: limit,
+      }),
+      prisma.vendorPayment.count({ where }),
+    ]);
+
+    // Calculate summary statistics
+    const stats = await prisma.vendorPayment.aggregate({
+      where: { tenantId },
+      _sum: {
+        amount: true,
+        bankCharges: true,
+        taxAmount: true,
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    // Payment mode breakdown
+    const paymentModeBreakdown = await prisma.vendorPayment.groupBy({
+      by: ['paymentMode'],
+      where: { tenantId },
+      _count: { _all: true },
+      _sum: { amount: true },
+    });
+
+    res.json({
+      vendorPayments,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      summary: {
+        totalPayments: stats._count._all,
+        totalAmount: stats._sum.amount || 0,
+        totalBankCharges: stats._sum.bankCharges || 0,
+        totalTaxAmount: stats._sum.taxAmount || 0,
+        paymentModeBreakdown: paymentModeBreakdown.map(item => ({
+          paymentMode: item.paymentMode,
+          count: item._count._all,
+          totalAmount: item._sum.amount || 0
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Error listing vendor payments:', error);
+    res.status(500).json({ error: 'Failed to list vendor payments' });
+  }
+};
+
+/**
+ * 📄 GET VENDOR PAYMENT BY ID WITH FULL DETAILS
+ * GET /api/v1/vendor-payments/:id
+ * Returns vendor payment with journal entries and full details
+ */
+export const getVendorPayment = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+    const { id } = req.params;
+
+    const vendorPayment = await prisma.vendorPayment.findFirst({
+      where: { id, tenantId },
+      include: {
+        vendor: {
+          select: { id: true, name: true, displayName: true, email: true, phone: true }
+        },
+        paidThrough: {
+          select: { id: true, accountNumber: true, name: true, type: true }
+        },
+        billPayments: {
+          include: {
+            bill: {
+              select: { 
+                id: true, 
+                billNumber: true, 
+                totalAmount: true, 
+                paidAmount: true,
+                billDate: true,
+                dueDate: true,
+                status: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!vendorPayment) {
+      return res.status(404).json({ error: 'Vendor payment not found' });
+    }
+
+    // Get journal entries
+    let journalEntries = null;
+    if (vendorPayment.journalId) {
+      journalEntries = await prisma.entry.findMany({
+        where: {
+          journalId: vendorPayment.journalId,
+          tenantId
+        },
+        include: {
+          account: {
+            select: { id: true, code: true, name: true, type: true }
+          }
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+    }
+
+    res.json({
+      vendorPayment,
+      journalEntries,
+      doubleEntry: journalEntries ? {
+        debits: journalEntries.filter(entry => entry.type === 'DEBIT'),
+        credits: journalEntries.filter(entry => entry.type === 'CREDIT'),
+        totalDebits: journalEntries
+          .filter(entry => entry.type === 'DEBIT')
+          .reduce((sum, entry) => sum + Number(entry.amount), 0),
+        totalCredits: journalEntries
+          .filter(entry => entry.type === 'CREDIT')
+          .reduce((sum, entry) => sum + Number(entry.amount), 0)
+      } : null
+    });
+  } catch (error) {
+    console.error('Error getting vendor payment:', error);
+    res.status(500).json({ error: 'Failed to get vendor payment' });
+  }
+};
+
+/**
+ * ➕ CREATE NEW VENDOR PAYMENT WITH DOUBLE ENTRY
+ * POST /api/v1/vendor-payments
+ * Creates vendor payment with proper journal entries and bill allocation
+ */
+export const createVendorPayment = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+    
+    const validatedData = CreateVendorPaymentSchema.parse(req.body);
+
+    // Calculate net amount (amount + bank charges + tax)
+    const netAmount = validatedData.amount + validatedData.bankCharges + validatedData.taxAmount;
+
+    // Generate payment number
+    const latestPayment = await prisma.vendorPayment.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      select: { paymentNumber: true }
+    });
+
+    const paymentNumber = generatePaymentNumber(latestPayment?.paymentNumber);
+
+    // Get default book
+    const book = await prisma.book.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    if (!book) {
+      return res.status(400).json({ error: 'No accounting book found' });
+    }
+
+    // Get vendor to check if we have an accounts payable account
+    const vendor = await prisma.vendor.findFirst({
+      where: { id: validatedData.vendorId, tenantId }
+    });
+
+    if (!vendor) {
+      return res.status(404).json({ error: 'Vendor not found' });
+    }
+
+    // Find Accounts Payable account (LIABILITY type)
+    const accountsPayableAccount = await prisma.account.findFirst({
+      where: {
+        tenantId,
+        type: 'LIABILITY',
+        name: { contains: 'Accounts Payable' }
+      }
+    });
+
+    if (!accountsPayableAccount) {
+      return res.status(400).json({ error: 'Accounts Payable account not found. Please create one first.' });
+    }
+
+    // Start transaction for double-entry bookkeeping
+    const journalId = `VP-${paymentNumber}-${Date.now()}`;
+    
+    const result = await prisma.$transaction(async (tx) => {
+      // Create vendor payment record
+      const vendorPayment = await tx.vendorPayment.create({
+        data: {
+          paymentNumber,
+          vendorId: validatedData.vendorId,
+          amount: validatedData.amount,
+          bankCharges: validatedData.bankCharges,
+          taxAmount: validatedData.taxAmount,
+          paymentDate: validatedData.paymentDate ? new Date(validatedData.paymentDate) : new Date(),
+          paymentMode: validatedData.paymentMode,
+          paidThroughId: validatedData.paidThroughId,
+          referenceNumber: validatedData.referenceNumber,
+          taxDeducted: validatedData.taxDeducted,
+          notes: validatedData.notes,
+          internalNotes: validatedData.internalNotes,
+          branch: validatedData.branch || 'Head Office',
+          journalId,
+          tenantId,
+          createdBy: req.user?.uid || 'system',
+        }
+      });
+
+      // Create bill payment allocations if provided
+      if (validatedData.billPayments && validatedData.billPayments.length > 0) {
+        for (const billPayment of validatedData.billPayments) {
+          await tx.billPayment.create({
+            data: {
+              billId: billPayment.billId,
+              amount: billPayment.amount,
+              paymentDate: vendorPayment.paymentDate,
+              paymentMethod: validatedData.paymentMode,
+              reference: vendorPayment.paymentNumber,
+              notes: `Payment from ${vendorPayment.paymentNumber}`,
+              vendorPaymentId: vendorPayment.id,
+              tenantId,
+            }
+          });
+
+          // Update bill paid amount
+          await tx.bill.update({
+            where: { id: billPayment.billId },
+            data: {
+              paidAmount: {
+                increment: billPayment.amount
+              }
+            }
+          });
+        }
+      }
+
+      // JOURNAL ENTRIES - Double Entry Bookkeeping
+      // 1. Debit: Accounts Payable (LIABILITY) - reduces what we owe
+      await tx.entry.create({
+        data: {
+          accountId: accountsPayableAccount.id,
+          bookId: book.id,
+          tenantId,
+          amount: validatedData.amount,
+          currency: 'MMK',
+          exchangeRate: 1,
+          type: 'DEBIT',
+          memo: `Payment to ${vendor.name}`,
+          reference: paymentNumber,
+          journalId,
+          postedAt: new Date()
+        }
+      });
+
+      // 2. If bank charges, debit bank charges expense account
+      if (validatedData.bankCharges > 0) {
+        const bankChargesAccount = await tx.account.findFirst({
+          where: {
+            tenantId,
+            type: 'EXPENSE',
+            OR: [
+              { name: { contains: 'Bank Charges' } },
+              { name: { contains: 'Bank Fees' } },
+              { code: '6500' } // Standard bank charges account code
+            ]
+          }
+        });
+
+        if (bankChargesAccount) {
+          await tx.entry.create({
+            data: {
+              accountId: bankChargesAccount.id,
+              bookId: book.id,
+              tenantId,
+              amount: validatedData.bankCharges,
+              currency: 'MMK',
+              exchangeRate: 1,
+              type: 'DEBIT',
+              memo: `Bank charges for payment to ${vendor.name}`,
+              reference: paymentNumber,
+              journalId,
+              postedAt: new Date()
+            }
+          });
+        }
+      }
+
+      // 3. If tax deducted, debit tax account
+      if (validatedData.taxDeducted && validatedData.taxAmount > 0) {
+        const taxAccount = await tx.account.findFirst({
+          where: {
+            tenantId,
+            type: 'ASSET',
+            OR: [
+              { name: { contains: 'Tax Deducted' } },
+              { name: { contains: 'TDS' } },
+              { code: '1300' } // Standard TDS account code
+            ]
+          }
+        });
+
+        if (taxAccount) {
+          await tx.entry.create({
+            data: {
+              accountId: taxAccount.id,
+              bookId: book.id,
+              tenantId,
+              amount: validatedData.taxAmount,
+              currency: 'MMK',
+              exchangeRate: 1,
+              type: 'DEBIT',
+              memo: `Tax deducted for payment to ${vendor.name}`,
+              reference: paymentNumber,
+              journalId,
+              postedAt: new Date()
+            }
+          });
+        }
+      }
+
+      // 4. Credit: Paid Through Account (ASSET) - reduces cash/bank balance
+      // First get the payment method to determine the account to use
+      const paymentMethod = await tx.paymentMethod.findUnique({
+        where: { id: validatedData.paidThroughId }
+      });
+
+      if (!paymentMethod) {
+        throw new Error('Payment method not found');
+      }
+
+      // Find the corresponding cash/bank account based on payment method type
+      let paidThroughAccount;
+      if (paymentMethod.type === 'cash') {
+        paidThroughAccount = await tx.account.findFirst({
+          where: { tenantId, code: '1000' } // Cash Account
+        });
+      } else {
+        // For bank transfers, credit cards, etc., use Cash/Bank account
+        paidThroughAccount = await tx.account.findFirst({
+          where: { tenantId, code: '1000' } // Cash/Bank Account
+        });
+      }
+
+      if (!paidThroughAccount) {
+        throw new Error('Paid through account not found. Please ensure Chart of Accounts is properly set up.');
+      }
+
+      await tx.entry.create({
+        data: {
+          accountId: paidThroughAccount.id,
+          bookId: book.id,
+          tenantId,
+          amount: netAmount,
+          currency: 'MMK',
+          exchangeRate: 1,
+          type: 'CREDIT',
+          memo: `Payment to ${vendor.name} via ${paymentMethod.name}`,
+          reference: paymentNumber,
+          journalId,
+          postedAt: new Date()
+        }
+      });
+
+      return vendorPayment;
+    }, {
+      timeout: 15000, // 15 seconds timeout
+    });
+
+    // Fetch the created payment with full details
+    const paymentWithDetails = await prisma.vendorPayment.findUnique({
+      where: { id: result.id },
+      include: {
+        vendor: { select: { id: true, name: true, displayName: true } },
+        paidThrough: { select: { id: true, accountNumber: true, name: true, type: true } },
+        billPayments: {
+          include: {
+            bill: { select: { id: true, billNumber: true, totalAmount: true } }
+          }
+        }
+      }
+    });
+
+    res.status(201).json({
+      message: 'Vendor payment created successfully',
+      vendorPayment: paymentWithDetails
+    });
+
+  } catch (error) {
+    console.error('Error creating vendor payment:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Validation error', details: error.errors });
+    }
+    res.status(500).json({ error: 'Failed to create vendor payment' });
+  }
+};
+
+/**
+ * 🗑️ DELETE VENDOR PAYMENT (SOFT DELETE)
+ * DELETE /api/v1/vendor-payments/:id
+ * Soft deletes vendor payment and reverses journal entries
+ */
+export const deleteVendorPayment = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+    const { id } = req.params;
+
+    const vendorPayment = await prisma.vendorPayment.findFirst({
+      where: { id, tenantId },
+      include: {
+        billPayments: true
+      }
+    });
+
+    if (!vendorPayment) {
+      return res.status(404).json({ error: 'Vendor payment not found' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Reverse bill payments
+      for (const billPayment of vendorPayment.billPayments) {
+        await tx.bill.update({
+          where: { id: billPayment.billId },
+          data: {
+            paidAmount: {
+              decrement: Number(billPayment.amount)
+            }
+          }
+        });
+
+        await tx.billPayment.delete({
+          where: { id: billPayment.id }
+        });
+      }
+
+      // Delete journal entries
+      if (vendorPayment.journalId) {
+        await tx.entry.deleteMany({
+          where: { journalId: vendorPayment.journalId, tenantId }
+        });
+      }
+
+      // Delete vendor payment
+      await tx.vendorPayment.delete({
+        where: { id }
+      });
+    });
+
+    res.json({ message: 'Vendor payment deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting vendor payment:', error);
+    res.status(500).json({ error: 'Failed to delete vendor payment' });
+  }
+};
+
+/**
+ * 📊 GET VENDOR PAYMENT STATISTICS
+ * GET /api/v1/vendor-payments/stats
+ * Returns comprehensive vendor payment statistics
+ */
+export const getVendorPaymentStats = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+
+    const [
+      totalStats,
+      paymentModeStats,
+      monthlyStats,
+      vendorStats
+    ] = await Promise.all([
+      // Total statistics
+      prisma.vendorPayment.aggregate({
+        where: { tenantId },
+        _sum: { amount: true, bankCharges: true, taxAmount: true },
+        _count: { _all: true },
+        _avg: { amount: true }
+      }),
+
+      // Payment mode breakdown
+      prisma.vendorPayment.groupBy({
+        by: ['paymentMode'],
+        where: { tenantId },
+        _count: { _all: true },
+        _sum: { amount: true }
+      }),
+
+      // Monthly trends (last 12 months)
+      prisma.$queryRaw`
+        SELECT 
+          DATE_FORMAT(paymentDate, '%Y-%m') as month,
+          COUNT(*) as count,
+          SUM(amount) as total
+        FROM vendor_payments 
+        WHERE tenantId = ${tenantId} 
+          AND paymentDate >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+        GROUP BY DATE_FORMAT(paymentDate, '%Y-%m')
+        ORDER BY month DESC
+        LIMIT 12
+      `,
+
+      // Top vendors by payment amount
+      prisma.vendorPayment.groupBy({
+        by: ['vendorId'],
+        where: { tenantId },
+        _count: { _all: true },
+        _sum: { amount: true },
+        orderBy: { _sum: { amount: 'desc' } },
+        take: 10
+      })
+    ]);
+
+    // Get vendor details for top vendors
+    const vendorIds = vendorStats.map(stat => stat.vendorId);
+    const vendors = await prisma.vendor.findMany({
+      where: { id: { in: vendorIds } },
+      select: { id: true, name: true, displayName: true }
+    });
+
+    const topVendors = vendorStats.map(stat => {
+      const vendor = vendors.find(v => v.id === stat.vendorId);
+      return {
+        vendor: vendor || { id: stat.vendorId, name: 'Unknown', displayName: 'Unknown' },
+        count: stat._count._all,
+        totalAmount: stat._sum.amount || 0
+      };
+    });
+
+    res.json({
+      totalStats: {
+        totalPayments: totalStats._count._all,
+        totalAmount: totalStats._sum.amount || 0,
+        totalBankCharges: totalStats._sum.bankCharges || 0,
+        totalTaxAmount: totalStats._sum.taxAmount || 0,
+        averageAmount: totalStats._avg.amount || 0
+      },
+      paymentModeBreakdown: paymentModeStats.map(stat => ({
+        paymentMode: stat.paymentMode,
+        count: stat._count._all,
+        totalAmount: stat._sum.amount || 0
+      })),
+      monthlyTrends: monthlyStats,
+      topVendors
+    });
+
+  } catch (error) {
+    console.error('Error getting vendor payment stats:', error);
+    res.status(500).json({ error: 'Failed to get vendor payment statistics' });
+  }
+};
+
+/**
+ * 🆔 GET NEXT PAYMENT NUMBER
+ * GET /api/v1/vendor-payments/next-number
+ * Returns the next payment number
+ */
+export const getNextPaymentNumber = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+
+    const latestPayment = await prisma.vendorPayment.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      select: { paymentNumber: true }
+    });
+
+    const nextNumber = generatePaymentNumber(latestPayment?.paymentNumber);
+
+    res.json({ paymentNumber: nextNumber });
+
+  } catch (error) {
+    console.error('Error getting next payment number:', error);
+    res.status(500).json({ error: 'Failed to get next payment number' });
+  }
+};
+
+/**
+ * 📋 GET VENDOR PENDING BILLS
+ * GET /api/v1/vendor-payments/vendor/:vendorId/pending-bills
+ * Returns pending bills for a specific vendor
+ */
+export const getVendorPendingBills = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+    const { vendorId } = req.params;
+
+    const pendingBills = await prisma.bill.findMany({
+      where: {
+        vendorId,
+        tenantId,
+        status: { in: ['PENDING', 'APPROVED', 'PARTIALLY_PAID'] }
+      },
+      select: {
+        id: true,
+        billNumber: true,
+        billDate: true,
+        dueDate: true,
+        subtotal: true,
+        taxAmount: true,
+        totalAmount: true,
+        paidAmount: true,
+        status: true,
+        currency: true
+      },
+      orderBy: { dueDate: 'asc' }
+    });
+
+    // Calculate remaining amounts
+    const billsWithBalance = pendingBills.map(bill => ({
+      ...bill,
+      remainingAmount: Number(bill.totalAmount) - Number(bill.paidAmount || 0),
+      isOverdue: new Date(bill.dueDate) < new Date(),
+      daysPastDue: Math.max(0, Math.floor((new Date().getTime() - new Date(bill.dueDate).getTime()) / (1000 * 60 * 60 * 24)))
+    }));
+
+    const totalPending = billsWithBalance.reduce((sum, bill) => sum + bill.remainingAmount, 0);
+
+    res.json({
+      pendingBills: billsWithBalance,
+      summary: {
+        totalBills: billsWithBalance.length,
+        totalPendingAmount: totalPending,
+        overdueBills: billsWithBalance.filter(bill => bill.isOverdue).length,
+        overdueAmount: billsWithBalance.filter(bill => bill.isOverdue).reduce((sum, bill) => sum + bill.remainingAmount, 0)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting vendor pending bills:', error);
+    res.status(500).json({ error: 'Failed to get vendor pending bills' });
+  }
+};
+
+// Helper function to generate payment numbers
+function generatePaymentNumber(lastNumber?: string): string {
+  if (!lastNumber) {
+    return '001';
+  }
+  
+  const match = lastNumber.match(/(\d+)$/);
+  if (match) {
+    const num = parseInt(match[1]) + 1;
+    return num.toString().padStart(3, '0');
+  }
+  
+  return '001';
+}

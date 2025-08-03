@@ -197,7 +197,7 @@ function NewInvoiceContent() {
         seriesOffset: invoiceNumberSettings.seriesOffset.toString()
       });
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/invoices/next-number?${params}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/next-number?${params}`);
       if (response.ok) {
         const data = await response.json();
         setFormData(prev => ({ ...prev, invoiceNumber: data.invoiceNumber }));
@@ -269,7 +269,7 @@ function NewInvoiceContent() {
   // Fetch accounts for dropdown
   const fetchAccounts = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/accounts`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/accounts`);
       if (response.ok) {
         const data = await response.json();
         setAccounts(data.accounts || []);
@@ -318,7 +318,7 @@ function NewInvoiceContent() {
 
   const loadInvoiceForDuplication = async (invoiceId: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/invoices/${invoiceId}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${invoiceId}`);
       if (response.ok) {
         const data = await response.json();
         const invoice = data.invoice;
@@ -353,7 +353,7 @@ function NewInvoiceContent() {
 
     setLoadingAI(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/invoices/ai-suggestions`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/ai-suggestions`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -508,7 +508,7 @@ function NewInvoiceContent() {
         status: action === 'send' ? 'SENT' : 'DRAFT'
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/invoices`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -523,7 +523,7 @@ function NewInvoiceContent() {
         console.log('✅ Invoice created successfully:', data.invoice);
         if (action === 'send') {
           // Send the invoice
-          await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/invoices/${data.invoice.id}/send`, {
+          await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${data.invoice.id}/send`, {
             method: 'POST',
             headers: { 'X-Tenant-ID': 'default' }
           });
@@ -555,7 +555,7 @@ function NewInvoiceContent() {
   // AI Assist Functions
   const handleAiAssist = async (action: string, data: any) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ai/invoice-assist`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/ai/invoice-assist`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

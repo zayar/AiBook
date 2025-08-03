@@ -118,14 +118,17 @@ router.post('/:id/payments', (req, res) => InvoiceController.recordPayment(req, 
 // Get all payments for an invoice
 router.get('/:id/payments', (req, res) => InvoiceController.getInvoicePayments(req, res));
 
-// Get journal entries for an invoice (ALE accounting) - Temporarily disabled
-router.get('/:id/journal-entries', (req, res) => JournalController.getInvoiceJournalEntries(req, res));
+// Get journal entries for an invoice (ALE accounting)
+router.get('/:id/journal-entries', (req, res) => InvoiceController.getInvoiceJournalData(req, res));
 
 // Process payment for an invoice
 router.post('/:id/pay', (req, res) => InvoiceController.processPayment(req, res));
 
-// Send invoice via email
+// Change invoice status from DRAFT to SENT (creates journal entries)
 router.post('/:id/send', (req, res) => InvoiceController.sendInvoice(req, res));
+
+// Send invoice via email
+router.post('/:id/send-email', (req, res) => InvoiceController.sendInvoiceEmail(req, res));
 
 /**
  * 🔄 RECURRING INVOICE ROUTES

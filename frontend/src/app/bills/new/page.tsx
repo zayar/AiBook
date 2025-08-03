@@ -111,6 +111,7 @@ export default function NewBillPage() {
   const loadInitialData = async () => {
     try {
       setInitialLoading(true);
+
       const [vendorsData, nextNumber, accountsResponse, itemsData, taxRatesData] = await Promise.all([
         vendorApi.getVendors({ page: 1, limit: 100 }),
         billApi.getNextBillNumber(),
@@ -121,13 +122,16 @@ export default function NewBillPage() {
         taxAPI.getTaxRates()
       ]);
 
+
+
       setVendors(vendorsData.vendors);
       setNextBillNumber(nextNumber.billNumber);
       setFormData(prev => ({ ...prev, billNumber: nextNumber.billNumber }));
 
       // Set items data
-      if (itemsData?.data) {
-        setItems(itemsData.data);
+      if (itemsData?.items) {
+        setItems(itemsData.items);
+
       }
 
       // Set tax rates data
@@ -173,12 +177,13 @@ export default function NewBillPage() {
         ...newItems[index],
         itemId: selectedItem.id,
         description: selectedItem.name,
-        unitPrice: selectedItem.unitPrice,
-        totalPrice: selectedItem.unitPrice * newItems[index].quantity,
+        unitPrice: Number(selectedItem.unitPrice),
+        totalPrice: Number(selectedItem.unitPrice) * newItems[index].quantity,
         accountCode: selectedItem.cogsAccount?.code || selectedItem.assetAccount?.code || '6000'
       };
       setFormData(prev => ({ ...prev, items: newItems }));
       calculateTotals(newItems);
+
     }
   };
 
@@ -350,7 +355,7 @@ export default function NewBillPage() {
 
   if (initialLoading) {
     return (
-      <div className="p-6 bg-gray-50 min-h-screen">
+      <div className="p-6 bg-white min-h-screen">
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -362,7 +367,7 @@ export default function NewBillPage() {
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-white min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-4">
@@ -381,7 +386,7 @@ export default function NewBillPage() {
           <button
             type="button"
             onClick={() => router.push('/bills')}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
           >
             Cancel
           </button>
@@ -550,7 +555,8 @@ export default function NewBillPage() {
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-4">
                   <div className="md:col-span-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Select Item
+                      Select Item from Inventory 
+                      <span className="text-xs text-green-600 ml-1">({items.length} items available)</span>
                     </label>
                     <div className="flex space-x-2">
                       <select
@@ -558,10 +564,12 @@ export default function NewBillPage() {
                         onChange={(e) => handleItemSelect(index, e.target.value)}
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       >
-                        <option value="">Select an existing item...</option>
+                        <option value="">
+                          {items.length > 0 ? 'Select from inventory items...' : 'No items in inventory'}
+                        </option>
                         {items.map(inventoryItem => (
                           <option key={inventoryItem.id} value={inventoryItem.id}>
-                            {inventoryItem.name} ({inventoryItem.sku}) - {formData.currency} {inventoryItem.unitPrice}
+                            {inventoryItem.name} ({inventoryItem.sku}) - ${Number(inventoryItem.unitPrice).toLocaleString()} - Stock: {inventoryItem.quantityOnHand}
                           </option>
                         ))}
                       </select>
@@ -884,7 +892,7 @@ export default function NewBillPage() {
               <button
                 type="button"
                 onClick={() => setShowNewItemModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
               >
                 Cancel
               </button>

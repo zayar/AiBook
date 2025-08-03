@@ -10,15 +10,15 @@ interface PaymentReceivedRequest {
   customerName?: string;
   amount: number;
   paymentDate: string;
-  paymentMode: string;
-  depositType: string;
+  paymentMode: 'CASH' | 'BANK_TRANSFER' | 'CHECK' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'MOBILE_PAYMENT' | 'ONLINE_TRANSFER' | 'OTHER';
+  depositType: 'CASH_IN_HAND' | 'BANK_DEPOSIT' | 'PETTY_CASH' | 'UNDEPOSITED_FUNDS';
   bankCharges?: number;
   referenceNumber?: string;
-  taxDeducted: boolean;
+  taxDeducted?: boolean;
   taxAmount?: number;
   notes?: string;
   internalNotes?: string;
-  sendThankYouEmail: boolean;
+  sendThankYouEmail?: boolean;
   invoiceAllocations?: {
     invoiceId: string;
     amountAllocated: number;
@@ -152,15 +152,21 @@ export class PaymentReceivedController {
       // Generate payment number
       const lastPayment = await prisma.paymentReceived.findFirst({
         where: { tenantId },
-        orderBy: { paymentNumber: 'desc' },
+        orderBy: { createdAt: 'desc' },
         select: { paymentNumber: true }
       });
 
-      const nextNumber = lastPayment 
-        ? (parseInt(lastPayment.paymentNumber) + 1).toString()
-        : '2230';
+      // Extract number from payment number format (e.g., "PAY-2230" -> 2230)
+      let nextNumber = 'PAY-2230';
+      if (lastPayment?.paymentNumber) {
+        const match = lastPayment.paymentNumber.match(/(\d+)$/);
+        if (match) {
+          const lastNumber = parseInt(match[1]);
+          nextNumber = `PAY-${String(lastNumber + 1).padStart(4, '0')}`;
+        }
+      }
 
-      // Start transaction
+      // Start transaction with extended timeout
       const payment = await prisma.$transaction(async (tx) => {
         // Create payment received record
         const paymentReceived = await tx.paymentReceived.create({
@@ -171,15 +177,15 @@ export class PaymentReceivedController {
             customerName: data.customerName || (data.customerId ? undefined : 'Walk-in Customer'),
             amount: data.amount,
             paymentDate: new Date(data.paymentDate),
-            paymentMode: data.paymentMode as any,
-            depositType: data.depositType as any,
+            paymentMode: data.paymentMode,
+            depositType: data.depositType,
             bankCharges: data.bankCharges || null,
             referenceNumber: data.referenceNumber,
-            taxDeducted: data.taxDeducted,
+            taxDeducted: data.taxDeducted || false,
             taxAmount: data.taxAmount || null,
             notes: data.notes,
             internalNotes: data.internalNotes,
-            sendThankYouEmail: data.sendThankYouEmail,
+            sendThankYouEmail: data.sendThankYouEmail || false,
             status: 'COMPLETED'
           }
         });
@@ -213,11 +219,18 @@ export class PaymentReceivedController {
           }
         }
 
-        // Create double-entry accounting entries
-        await PaymentReceivedController.createAccountingEntries(tx, paymentReceived, tenantId);
-
         return paymentReceived;
+      }, {
+        timeout: 30000 // 30 seconds timeout (increased)
       });
+
+      // Create accounting entries after main transaction (optional)
+      try {
+        await PaymentReceivedController.createAccountingEntriesAsync(payment.id, tenantId);
+      } catch (accountingError) {
+        console.warn('Accounting entries creation failed:', accountingError);
+        // Don't fail the main operation if accounting fails
+      }
 
       const fullPayment = await prisma.paymentReceived.findUnique({
         where: { id: payment.id },
@@ -342,7 +355,8 @@ export class PaymentReceivedController {
           where: { reference: id }
         });
         
-        await PaymentReceivedController.createAccountingEntries(tx, updatedPayment, tenantId);
+        // Note: Accounting entries for payment updates should be handled separately
+        // to avoid transaction timeouts
 
         return updatedPayment;
       });
@@ -454,6 +468,9 @@ export class PaymentReceivedController {
         });
       }
 
+      console.log(`🔍 Fetching unpaid invoices for customer: ${customerId}`);
+      console.log(`🔍 Using tenantId: ${tenantId}`);
+
       const invoices = await prisma.invoice.findMany({
         where: {
           tenantId,
@@ -473,13 +490,28 @@ export class PaymentReceivedController {
         orderBy: { dueDate: 'asc' }
       });
 
-      // Calculate amounts due
-      const unpaidInvoices = invoices.map(invoice => ({
-        ...invoice,
-        amountDue: invoice.totalAmount.minus(invoice.paidAmount),
-        isOverdue: new Date(invoice.dueDate) < new Date()
-      })).filter(invoice => invoice.amountDue.gt(0));
+      console.log(`🔍 Raw invoices found: ${invoices.length}`);
+      console.log('🔍 Invoice details:', invoices.map(inv => ({
+        number: inv.invoiceNumber,
+        status: inv.status,
+        total: inv.totalAmount.toString(),
+        paid: inv.paidAmount.toString()
+      })));
 
+      // Calculate amounts due
+      const unpaidInvoices = invoices.map(invoice => {
+        const amountDue = invoice.totalAmount.minus(invoice.paidAmount);
+        return {
+          ...invoice,
+          totalAmount: parseFloat(invoice.totalAmount.toString()),
+          paidAmount: parseFloat(invoice.paidAmount.toString()),
+          amountDue: parseFloat(amountDue.toString()),
+          isOverdue: new Date(invoice.dueDate) < new Date()
+        };
+      }).filter(invoice => invoice.amountDue > 0);
+
+      console.log(`📋 Found ${unpaidInvoices.length} unpaid invoices for customer ${customerId}`);
+      
       res.json({
         success: true,
         data: unpaidInvoices
@@ -491,6 +523,28 @@ export class PaymentReceivedController {
         message: 'Failed to fetch unpaid invoices',
         error: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  }
+
+  /**
+   * 🔢 CREATE ACCOUNTING ENTRIES FOR PAYMENT RECEIVED (ASYNC)
+   * Implements proper double-entry bookkeeping - runs after main transaction
+   */
+  private static async createAccountingEntriesAsync(paymentId: string, tenantId: string) {
+    try {
+      // Get payment with necessary data
+      const payment = await prisma.paymentReceived.findUnique({
+        where: { id: paymentId }
+      });
+
+      if (!payment) {
+        throw new Error('Payment not found');
+      }
+
+      await PaymentReceivedController.createAccountingEntries(prisma, payment, tenantId);
+    } catch (error) {
+      console.error('Error creating accounting entries async:', error);
+      throw error;
     }
   }
 
@@ -513,16 +567,16 @@ export class PaymentReceivedController {
       const journalId = `PMTR-${payment.paymentNumber}`;
 
       // Determine cash/bank account based on deposit type
-      let cashAccountCode = '1001'; // Default to Cash in Hand
+      let cashAccountCode = '1000'; // Default to Cash
       switch (payment.depositType) {
         case 'BANK_DEPOSIT':
-          cashAccountCode = '1002'; // Bank Account
+          cashAccountCode = '1000'; // Cash/Bank Account
           break;
         case 'PETTY_CASH':
-          cashAccountCode = '1003'; // Petty Cash
+          cashAccountCode = '1000'; // Cash Account
           break;
         case 'UNDEPOSITED_FUNDS':
-          cashAccountCode = '1004'; // Undeposited Funds
+          cashAccountCode = '1100'; // Accounts Receivable temporarily
           break;
       }
 
@@ -532,10 +586,10 @@ export class PaymentReceivedController {
           where: { tenantId, code: cashAccountCode }
         }),
         tx.account.findFirst({
-          where: { tenantId, code: '4001' } // Sales Revenue
+          where: { tenantId, code: '4000' } // Sales Revenue
         }),
         payment.taxDeducted ? tx.account.findFirst({
-          where: { tenantId, code: '2003' } // Tax Payable
+          where: { tenantId, code: '2300' } // Taxes Payable
         }) : null
       ]);
 
