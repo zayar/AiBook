@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { OpenAIService } from '../services/OpenAIService.ts';
+import { OpenAIService } from '../services/OpenAIService';
 
 export interface AgentTask {
   id: string;
@@ -153,7 +153,7 @@ export class FinancialAgentOrchestrator {
     } catch (error) {
       console.error(`❌ Task ${task.id} failed:`, error);
       task.status = 'failed';
-      task.result = { error: error.message };
+      task.result = { error: error instanceof Error ? error.message : 'Unknown error' };
     } finally {
       this.activeAgents.delete(task.assignedAgent);
       // Process next task in queue for this agent
@@ -166,7 +166,7 @@ export class FinancialAgentOrchestrator {
    * Determine which agent is best suited for a specific task
    */
   private async findBestAgent(taskType: string, taskData: any): Promise<string> {
-    const agentMapping = {
+    const agentMapping: Record<string, string> = {
       'audit': 'audit_agent',
       'tax': 'tax_agent',
       'budget': 'budget_agent',
@@ -183,7 +183,7 @@ export class FinancialAgentOrchestrator {
    * Get current status of all agents
    */
   async getAgentStatus(): Promise<Record<string, AgentCapability>> {
-    const status = {};
+    const status: Record<string, AgentCapability> = {};
 
     for (const [agentId, agent] of this.agents) {
       status[agentId] = {

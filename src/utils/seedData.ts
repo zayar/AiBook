@@ -108,8 +108,8 @@ export async function seedDatabase() {
       },
       {
         journalId: 'JE-002',
-        reference: 'INV-001',
-        description: 'Sale to Customer A',
+        reference: 'SVC-001',
+        description: 'Service to Customer A',
         lines: [
           { accountCode: '1100', type: EntryType.DEBIT, amount: 15000, description: 'Invoice for services' },
           { accountCode: '4100', type: EntryType.CREDIT, amount: 15000, description: 'Service revenue' }
@@ -130,7 +130,7 @@ export async function seedDatabase() {
         description: 'Payment received from Customer A',
         lines: [
           { accountCode: '1000', type: EntryType.DEBIT, amount: 15000, description: 'Cash received' },
-          { accountCode: '1100', type: EntryType.CREDIT, amount: 15000, description: 'Payment of invoice' }
+          { accountCode: '1100', type: EntryType.CREDIT, amount: 15000, description: 'Payment of service invoice' }
         ]
       },
       {

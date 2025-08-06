@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { OpenAIService } from '../services/OpenAIService.ts';
-import { PredictiveAnalyticsEngine } from './PredictiveAnalyticsEngine.ts';
+import { OpenAIService } from '../services/OpenAIService';
+import { PredictiveAnalyticsEngine } from './PredictiveAnalyticsEngine';
 
 export interface FinancialInsight {
   id: string;
@@ -220,7 +220,7 @@ export class SmartInsightsEngine {
   // INSIGHT GENERATION METHODS
   // ========================================
 
-  private async generateCashFlowInsights(tenantId: string): Promise<FinancialInsight[]> {
+  async generateCashFlowInsights(tenantId: string): Promise<FinancialInsight[]> {
     const insights: FinancialInsight[] = [];
 
     try {
@@ -605,7 +605,7 @@ export class SmartInsightsEngine {
     const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
     
     // Group by customer
-    const customerRevenue = {};
+    const customerRevenue: Record<string, number> = {};
     invoices.forEach(inv => {
       const customerId = inv.customerId;
       if (!customerRevenue[customerId]) customerRevenue[customerId] = 0;
@@ -629,15 +629,18 @@ export class SmartInsightsEngine {
       await this.prisma.aIInsight.createMany({
         data: insights.map(insight => ({
           tenantId,
-          type: insight.type as any,
-          title: insight.title,
-          description: insight.description,
-          impact: insight.impact,
-          confidence: insight.confidence,
-          category: insight.category,
-          data: JSON.stringify(insight.data),
-          recommendations: JSON.stringify(insight.recommendations),
-          isActive: true
+          type: 'PATTERN_RECOGNITION' as const,
+          entityType: 'financial_overview',
+          entityId: `overview_${Date.now()}`,
+          insight: {
+            title: insight.title,
+            description: insight.description,
+            impact: insight.impact,
+            category: insight.category,
+            data: insight.data,
+            recommendations: insight.recommendations
+          },
+          confidence: insight.confidence
         }))
       });
     } catch (error) {

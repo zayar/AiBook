@@ -1,13 +1,13 @@
 import express from 'express';
 import { AdvancedAIController } from '../controllers/advancedAIController';
-import { authenticateToken } from '../middleware/authMiddleware';
-import { validateTenant } from '../middleware/enhancedTenantMiddleware';
+import { authMiddleware } from '../middleware/authMiddleware';
+import { enhancedTenantMiddleware } from '../middleware/enhancedTenantMiddleware';
 
 const router = express.Router();
 
 // Apply middleware to all routes
-router.use(authenticateToken);
-router.use(validateTenant);
+router.use(authMiddleware);
+router.use(enhancedTenantMiddleware);
 
 /**
  * 🧠 ADVANCED AI ROUTES
@@ -134,7 +134,7 @@ router.get('/status', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to check advanced AI status',
-      details: error.message
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -222,7 +222,7 @@ router.get('/models', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve model information',
-      details: error.message
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -258,7 +258,7 @@ router.post('/test/prediction', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Test prediction failed',
-      details: error.message
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });

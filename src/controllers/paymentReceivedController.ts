@@ -206,16 +206,73 @@ export class PaymentReceivedController {
             )
           );
 
-          // Update invoice paid amounts
+          // Update invoice paid amounts and status
           for (const allocation of data.invoiceAllocations) {
+            // Get current invoice to check total amount
+            const invoice = await tx.invoice.findUnique({
+              where: { id: allocation.invoiceId },
+              select: { totalAmount: true, paidAmount: true }
+            });
+
+            if (!invoice) continue;
+
+            const newPaidAmount = Number(invoice.paidAmount) + allocation.amountAllocated;
+            const totalAmount = Number(invoice.totalAmount);
+
+            // Determine new status based on payment
+            let newStatus: 'SENT' | 'PAID' | 'PARTIALLY_PAID' = 'SENT'; // Default status
+            if (newPaidAmount >= totalAmount) {
+              newStatus = 'PAID';
+            } else if (newPaidAmount > 0) {
+              newStatus = 'PARTIALLY_PAID';
+            }
+
             await tx.invoice.update({
               where: { id: allocation.invoiceId },
               data: {
                 paidAmount: {
                   increment: allocation.amountAllocated
-                }
+                },
+                status: newStatus as any
               }
             });
+          }
+        }
+
+        // Create bank transaction if depositing to a bank account
+        if (data.depositType && data.depositType.length > 20) { // Assume bank account ID if longer than 20 chars
+          try {
+            // Check if depositType is a valid payment method (bank account)
+            const paymentMethod = await tx.paymentMethod.findFirst({
+              where: { 
+                id: data.depositType,
+                tenantId,
+                isActive: true 
+              }
+            });
+
+            if (paymentMethod) {
+              // Create bank transaction
+              await tx.bankTransaction.create({
+                data: {
+                  tenantId,
+                  paymentMethodId: paymentMethod.id,
+                  description: `Payment received from ${data.customerName || 'Customer'} - ${nextNumber}`,
+                  amount: data.amount,
+                  type: 'DEPOSIT',
+                  transactionDate: new Date(data.paymentDate),
+                  reference: data.referenceNumber,
+                  status: 'cleared',
+                  reconciled: false,
+                  runningBalance: 0, // Will be calculated by balance update logic
+                  debitAmount: 0,
+                  creditAmount: data.amount
+                }
+              });
+            }
+          } catch (bankError) {
+            console.warn('Failed to create bank transaction:', bankError);
+            // Don't fail the whole payment creation if bank transaction fails
           }
         }
 
@@ -568,16 +625,53 @@ export class PaymentReceivedController {
 
       // Determine cash/bank account based on deposit type
       let cashAccountCode = '1000'; // Default to Cash
-      switch (payment.depositType) {
-        case 'BANK_DEPOSIT':
-          cashAccountCode = '1000'; // Cash/Bank Account
-          break;
-        case 'PETTY_CASH':
-          cashAccountCode = '1000'; // Cash Account
-          break;
-        case 'UNDEPOSITED_FUNDS':
-          cashAccountCode = '1100'; // Accounts Receivable temporarily
-          break;
+      
+      // Handle both legacy enum values and new bank account IDs
+      if (payment.depositType && payment.depositType.length > 20) {
+        // This is a bank account ID, get the specific account mapping
+        const bankAccount = await tx.paymentMethod.findFirst({
+          where: { id: payment.depositType, tenantId }
+        });
+        
+        if (bankAccount) {
+          // Map different bank account types to appropriate GL accounts
+          switch (bankAccount.type) {
+            case 'bank_transfer':
+            case 'bank_account':
+              cashAccountCode = '1111'; // Bank Account
+              break;
+            case 'cash':
+              cashAccountCode = '1112'; // Cash Account
+              break;
+            case 'petty_cash':
+              cashAccountCode = '1112'; // Petty Cash
+              break;
+            default:
+              cashAccountCode = '1111'; // Default to Bank Account
+              break;
+          }
+        } else {
+          cashAccountCode = '1111'; // Default bank account
+        }
+      } else {
+        // Legacy enum values with proper account mapping
+        switch (payment.depositType) {
+          case 'BANK_DEPOSIT':
+            cashAccountCode = '1111'; // Bank Account
+            break;
+          case 'PETTY_CASH':
+            cashAccountCode = '1112'; // Petty Cash
+            break;
+          case 'UNDEPOSITED_FUNDS':
+            cashAccountCode = '1115'; // Undeposited Funds
+            break;
+          case 'CASH_IN_HAND':
+            cashAccountCode = '1112'; // Cash in Hand
+            break;
+          default:
+            cashAccountCode = '1111'; // Default to Bank Account
+            break;
+        }
       }
 
       // Get or create accounts

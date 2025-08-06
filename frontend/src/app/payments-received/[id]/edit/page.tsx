@@ -17,6 +17,7 @@ import {
   Calculator
 } from 'lucide-react';
 import { paymentReceivedAPI, PaymentReceived, UnpaidInvoice } from '@/lib/payment-received-api';
+import { PaymentAPI, PaymentMethod } from '@/lib/payment-api';
 import { useParams, useRouter } from 'next/navigation';
 import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
 import Link from 'next/link';
@@ -45,6 +46,7 @@ export default function EditPaymentReceivedPage() {
   const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
   const [invoiceAllocations, setInvoiceAllocations] = useState<InvoiceAllocation[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [bankAccounts, setBankAccounts] = useState<PaymentMethod[]>([]);
 
   const [formData, setFormData] = useState({
     customerId: '',
@@ -52,7 +54,7 @@ export default function EditPaymentReceivedPage() {
     amount: '',
     paymentDate: '',
     paymentMode: 'CASH',
-    depositType: 'CASH_IN_HAND',
+    depositType: '',
     bankCharges: '',
     referenceNumber: '',
     taxDeducted: false,
@@ -66,7 +68,8 @@ export default function EditPaymentReceivedPage() {
     if (params.id) {
       Promise.all([
         fetchPayment(params.id as string),
-        fetchCustomers()
+        fetchCustomers(),
+        fetchBankAccounts()
       ]);
     }
   }, [params.id]);
@@ -128,6 +131,15 @@ export default function EditPaymentReceivedPage() {
       setCustomers(response.customers || []);
     } catch (error) {
       console.error('Error fetching customers:', error);
+    }
+  };
+
+  const fetchBankAccounts = async () => {
+    try {
+      const response = await PaymentAPI.getPaymentMethods(true);
+      setBankAccounts(response.paymentMethods || []);
+    } catch (error) {
+      console.error('Error fetching bank accounts:', error);
     }
   };
 
@@ -372,6 +384,26 @@ export default function EditPaymentReceivedPage() {
                     required
                   />
                 </div>
+                {/* Total unpaid amount and quick fill button */}
+                {unpaidInvoices.length > 0 && (
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-sm text-gray-600">
+                      Total unpaid: <span className="font-semibold text-blue-600">
+                        {formatCurrency(unpaidInvoices.reduce((sum, inv) => sum + inv.amountDue, 0))}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ 
+                        ...prev, 
+                        amount: unpaidInvoices.reduce((sum, inv) => sum + inv.amountDue, 0).toString() 
+                      }))}
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors"
+                    >
+                      ✓ Received full amount ({formatCurrency(unpaidInvoices.reduce((sum, inv) => sum + inv.amountDue, 0))})
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -437,12 +469,21 @@ export default function EditPaymentReceivedPage() {
                   value={formData.depositType}
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
                 >
-                  <option value="CASH_IN_HAND">Cash in Hand</option>
-                  <option value="BANK_DEPOSIT">Bank Deposit</option>
-                  <option value="PETTY_CASH">Petty Cash</option>
-                  <option value="UNDEPOSITED_FUNDS">Undeposited Funds</option>
+                  <option value="">Select deposit account...</option>
+                  {bankAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} {account.bankName && `(${account.bankName})`} 
+                      {account.accountNumber && ` - •••${account.accountNumber.slice(-4)}`}
+                    </option>
+                  ))}
                 </select>
+                {bankAccounts.length === 0 && (
+                  <p className="mt-1 text-xs text-red-500">
+                    No bank accounts found. Please add bank accounts (including Cash in Hand, Petty Cash, etc.) in the Banking section first.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -523,16 +564,26 @@ export default function EditPaymentReceivedPage() {
                         Amount Due: {formatCurrency(allocation.amountDue)}
                       </div>
                     </div>
-                    <div className="w-32">
-                      <input
-                        type="number"
-                        value={allocation.amountAllocated}
-                        onChange={(e) => updateAllocationAmount(allocation.invoiceId, parseFloat(e.target.value) || 0)}
-                        step="0.01"
-                        min="0"
-                        max={allocation.amountDue}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
+                    <div className="w-48">
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={allocation.amountAllocated}
+                          onChange={(e) => updateAllocationAmount(allocation.invoiceId, parseFloat(e.target.value) || 0)}
+                          step="0.01"
+                          min="0"
+                          max={allocation.amountDue}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateAllocationAmount(allocation.invoiceId, allocation.amountDue)}
+                          className="px-2 py-2 text-xs font-medium text-white bg-green-600 border border-green-700 rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-1 transition-colors"
+                          title={`Pay in Full (${formatCurrency(allocation.amountDue)})`}
+                        >
+                          Pay in Full
+                        </button>
+                      </div>
                     </div>
                     <button
                       type="button"

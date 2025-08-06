@@ -56,16 +56,49 @@ export class BankingController {
         prisma.paymentMethod.count({ where })
       ]);
 
-      // Add basic balance calculation for each payment method
-      const methodsWithBalances = paymentMethods.map(method => ({
-        ...method,
-        balance: 0, // Will be calculated from transactions later
-        reconciledBalance: 0,
-        unreconciledTransactions: 0,
-        lastReconciled: null,
-        transactionCount: 0,
-        paymentCount: 0
-      }));
+      // Calculate actual balances for each payment method
+      const methodsWithBalances = await Promise.all(
+        paymentMethods.map(async (method) => {
+          // Get all transactions for this payment method
+          const transactions = await prisma.bankTransaction.findMany({
+            where: {
+              paymentMethodId: method.id,
+              tenantId
+            },
+            orderBy: { transactionDate: 'desc' }
+          });
+
+          // Calculate balance from transactions
+          const balance = transactions.reduce((sum, tx) => {
+            const amount = parseFloat(tx.amount.toString());
+            return tx.type === 'DEPOSIT' ? sum + amount : sum - amount;
+          }, 0);
+
+          // Calculate reconciled balance
+          const reconciledTransactions = transactions.filter(tx => tx.reconciled);
+          const reconciledBalance = reconciledTransactions.reduce((sum, tx) => {
+            const amount = parseFloat(tx.amount.toString());
+            return tx.type === 'DEPOSIT' ? sum + amount : sum - amount;
+          }, 0);
+
+          // Count unreconciled transactions
+          const unreconciledTransactions = transactions.filter(tx => !tx.reconciled).length;
+
+          // Find last reconciled date
+          const lastReconciledTx = reconciledTransactions[0];
+          const lastReconciled = lastReconciledTx ? lastReconciledTx.transactionDate : null;
+
+          return {
+            ...method,
+            balance,
+            reconciledBalance,
+            unreconciledTransactions,
+            lastReconciled,
+            transactionCount: transactions.length,
+            paymentCount: transactions.filter(tx => tx.type === 'DEPOSIT').length
+          };
+        })
+      );
 
       res.json({
         paymentMethods: methodsWithBalances,
@@ -354,7 +387,10 @@ export class BankingController {
             paymentMethodId,
             reconciliationDate: new Date(reconciliationDate || new Date()),
             statementBalance: statementBalance || 0,
-            reconciledTransactions: transactionIds.length,
+            bookBalance: 0, // Will be calculated
+            adjustedBookBalance: 0,
+            variance: 0,
+            isBalanced: transactionIds.length > 0,
             status: 'COMPLETED',
             notes: `Reconciled ${transactionIds.length} transactions`
           }

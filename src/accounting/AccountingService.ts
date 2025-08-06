@@ -1,6 +1,7 @@
 import { ChartOfAccountsEngine } from './engines/ChartOfAccountsEngine';
 import { JournalEntryEngine } from './engines/JournalEntryEngine';
 import { ReportingEngine } from './engines/ReportingEngine';
+import { COGSEngine } from './engines/COGSEngine';
 
 /**
  * 🏢 ACCOUNTING SERVICE
@@ -13,12 +14,14 @@ export class AccountingService {
   private chartEngine: ChartOfAccountsEngine;
   private journalEngine: JournalEntryEngine;
   private reportingEngine: ReportingEngine;
+  private cogsEngine: COGSEngine;
 
   constructor(options: { tenantId: string }) {
     this.tenantId = options.tenantId;
     this.chartEngine = new ChartOfAccountsEngine(this.tenantId);
     this.journalEngine = new JournalEntryEngine(this.tenantId);
     this.reportingEngine = new ReportingEngine(this.tenantId);
+    this.cogsEngine = new COGSEngine(this.tenantId);
   }
 
   // Chart of Accounts operations
@@ -96,5 +99,46 @@ export class AccountingService {
 
   async generateFinancialRatios(asOfDate?: Date) {
     return await this.reportingEngine.generateFinancialRatios(asOfDate);
+  }
+
+  // COGS operations
+  async recordInventoryPurchase(input: {
+    inventoryItemId: string;
+    quantity: number;
+    unitCost: number;
+    purchaseDate: Date;
+    billItemId?: string;
+    reference?: string;
+  }) {
+    return await this.cogsEngine.recordInventoryPurchase({
+      ...input,
+      tenantId: this.tenantId
+    });
+  }
+
+  async calculateCOGS(input: {
+    invoiceItemId: string;
+    inventoryItemId: string;
+    quantitySold: number;
+    saleDate: Date;
+    reference?: string;
+  }) {
+    return await this.cogsEngine.calculateCOGS({
+      ...input,
+      tenantId: this.tenantId
+    });
+  }
+
+  async getInventoryCostSummary(inventoryItemId: string) {
+    return await this.cogsEngine.getInventoryCostSummary(inventoryItemId);
+  }
+
+  async handleInventoryReturn(input: {
+    originalInvoiceItemId: string;
+    returnQuantity: number;
+    returnDate: Date;
+    reference?: string;
+  }) {
+    return await this.cogsEngine.handleInventoryReturn(input);
   }
 } 

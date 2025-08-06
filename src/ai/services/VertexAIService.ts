@@ -114,7 +114,8 @@ export class VertexAIService {
       const response = result.response;
       
       // 3. Parse and structure the prediction
-      const forecast = await this.parseCashFlowPrediction(response.text(), months);
+      const responseText = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const forecast = await this.parseCashFlowPrediction(responseText, months);
       
       // 4. Enhance with statistical analysis
       const enhancedForecast = await this.enhanceForecastWithML(forecast, historicalData);
@@ -167,7 +168,8 @@ export class VertexAIService {
       const prompt = this.buildRevenueForecastPrompt(revenueData, periods);
       
       const result = await model.generateContent(prompt);
-      const forecast = await this.parseRevenueForecast(result.response.text());
+      const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const forecast = await this.parseRevenueForecast(responseText);
       
       // 3. Apply BigQuery ML for enhanced accuracy
       const mlEnhanced = await this.enhanceWithBigQueryML(forecast, 'revenue');
@@ -217,7 +219,8 @@ export class VertexAIService {
       const prompt = this.buildAnomalyDetectionPrompt(features, transactionData);
       
       const result = await model.generateContent(prompt);
-      const analysis = await this.parseAnomalyAnalysis(result.response.text());
+      const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const analysis = await this.parseAnomalyAnalysis(responseText);
       
       // 3. Apply statistical outlier detection
       const statisticalAnomalies = await this.detectStatisticalOutliers(transactionData);
@@ -273,18 +276,24 @@ export class VertexAIService {
       
       const prompt = this.buildDocumentProcessingPrompt(documentType);
       
-      const result = await model.generateContent([
-        { text: prompt },
-        { 
-          inlineData: {
-            mimeType: 'image/jpeg', // Adjust based on actual document type
-            data: base64Data
-          }
-        }
-      ]);
+      const result = await model.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { 
+              inlineData: {
+                mimeType: 'image/jpeg', // Adjust based on actual document type
+                data: base64Data
+              }
+            }
+          ]
+        }]
+      });
 
       // 2. Parse extracted data
-      const extractedData = await this.parseDocumentExtraction(result.response.text());
+      const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const extractedData = await this.parseDocumentExtraction(responseText);
       
       // 3. Validate and enhance with business rules
       const validated = await this.validateExtractedData(extractedData, documentType);
@@ -336,7 +345,8 @@ export class VertexAIService {
       const prompt = this.buildInsightsPrompt(financialData);
       
       const result = await model.generateContent(prompt);
-      const insights = await this.parseAdvancedInsights(result.response.text());
+      const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const insights = await this.parseAdvancedInsights(responseText);
       
       // 3. Enhance with BigQuery analytics
       const enhancedInsights = await this.enhanceInsightsWithBigQuery(insights, tenantId);

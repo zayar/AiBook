@@ -62,8 +62,17 @@ export async function POST(
     const resolvedParams = await params;
     const path = resolvedParams.path.join('/');
     
-    // Get the request body as JSON
-    const body = await request.json();
+    // Get the request body as JSON (handle empty body)
+    let body = {};
+    try {
+      const bodyText = await request.text();
+      if (bodyText.trim()) {
+        body = JSON.parse(bodyText);
+      }
+    } catch (error) {
+      // If body is empty or invalid JSON, use empty object
+      console.log('No request body or invalid JSON, using empty object');
+    }
     
     const backendUrl = `${BACKEND_URL}/${path}`;
     

@@ -26,6 +26,10 @@ import expenseRoutes from './expenseRoutes';
 import reportsRoutes from './reportsRoutes';
 import aiCopilotRoutes from './aiCopilotRoutes';
 import advancedAIRoutes from './advancedAIRoutes';
+import { cogsRoutes } from './cogsRoutes';
+import bankReconciliationRoutes from './bankReconciliationRoutes';
+import auditTrailRoutes from './auditTrailRoutes';
+import organizationProfileRoutes from './organizationProfileRoutes';
 
 const router = Router();
 
@@ -234,11 +238,23 @@ router.use('/payments-received', paymentReceivedRoutes);
 // Banking and reconciliation routes
 router.use('/banking', bankingRoutes);
 
+// Bank reconciliation routes
+router.use('/banking/reconciliation', bankReconciliationRoutes);
+
+// Audit trail routes
+router.use('/audit', auditTrailRoutes);
+
+// Organization profile routes
+router.use('/organization', organizationProfileRoutes);
+
 // Inventory management routes
 router.use('/inventory', inventoryRoutes);
 
 // Item management routes with AI features
 router.use('/items', itemRoutes);
+
+// Cost of Goods Sold (COGS) management routes
+router.use('/cogs', cogsRoutes);
 
 // Tax management routes
 router.use('/taxes', taxRoutes);

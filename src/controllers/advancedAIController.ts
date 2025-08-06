@@ -79,7 +79,7 @@ export class AdvancedAIController {
       res.status(500).json({
         success: false,
         error: 'Failed to generate ML cash flow prediction',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -140,7 +140,7 @@ export class AdvancedAIController {
       res.status(500).json({
         success: false,
         error: 'Failed to generate ML revenue forecast',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -219,7 +219,7 @@ export class AdvancedAIController {
       res.status(500).json({
         success: false,
         error: 'Failed to detect anomalies with ML',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -277,7 +277,7 @@ export class AdvancedAIController {
       res.status(500).json({
         success: false,
         error: 'Failed to segment customers with ML',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -331,7 +331,7 @@ export class AdvancedAIController {
       res.status(500).json({
         success: false,
         error: 'Failed to process document with AI',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -394,7 +394,7 @@ export class AdvancedAIController {
       res.status(500).json({
         success: false,
         error: 'Failed to generate advanced insights',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -454,7 +454,7 @@ export class AdvancedAIController {
       res.status(500).json({
         success: false,
         error: 'Failed to load advanced dashboard',
-        details: error.message
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -525,7 +525,7 @@ export class AdvancedAIController {
 
   private static combineInsightSources(vertexInsights: any[], smartInsights: any[], dashboardMetrics: any) {
     // Combine insights from different AI sources and prioritize
-    const combined = [];
+    const combined: any[] = [];
     
     // Add Vertex AI insights
     vertexInsights.forEach(insight => {

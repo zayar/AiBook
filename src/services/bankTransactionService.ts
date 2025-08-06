@@ -636,8 +636,9 @@ export class BankTransactionService {
           reconciliationDate: data.reconciliationDate,
           statementBalance: data.statementBalance,
           bookBalance,
-          difference: data.statementBalance - bookBalance,
-          reconciledTransactions: data.transactionIds.length,
+          adjustedBookBalance: bookBalance,
+          variance: data.statementBalance - bookBalance,
+          isBalanced: Math.abs(data.statementBalance - bookBalance) < 0.01,
           status: Math.abs(data.statementBalance - bookBalance) < 0.01 ? 'COMPLETED' : 'DISCREPANCY',
           notes: data.notes
         }

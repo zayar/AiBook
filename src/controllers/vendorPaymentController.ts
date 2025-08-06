@@ -321,15 +321,40 @@ export const createVendorPayment = async (req: Request, res: Response) => {
             }
           });
 
-          // Update bill paid amount
-          await tx.bill.update({
+          // Update bill paid amount and status
+          // Get current bill to check total amount
+          const bill = await tx.bill.findUnique({
             where: { id: billPayment.billId },
-            data: {
-              paidAmount: {
-                increment: billPayment.amount
-              }
-            }
+            select: { totalAmount: true, paidAmount: true }
           });
+
+          if (bill) {
+            const newPaidAmount = Number(bill.paidAmount) + billPayment.amount;
+            const totalAmount = Number(bill.totalAmount);
+
+            // Validate against overpayment (allow small rounding differences)
+            if (newPaidAmount > totalAmount + 0.01) {
+              throw new Error(`Payment amount would exceed bill total. Bill total: ${totalAmount}, Current paid: ${bill.paidAmount}, Payment: ${billPayment.amount}`);
+            }
+
+            // Determine new status based on payment
+            let newStatus: 'PENDING' | 'PAID' | 'PARTIALLY_PAID' = 'PENDING'; // Default status
+            if (Math.abs(newPaidAmount - totalAmount) <= 0.01) {
+              newStatus = 'PAID';
+            } else if (newPaidAmount > 0) {
+              newStatus = 'PARTIALLY_PAID';
+            }
+
+            await tx.bill.update({
+              where: { id: billPayment.billId },
+              data: {
+                paidAmount: {
+                  increment: billPayment.amount
+                },
+                status: newStatus
+              }
+            });
+          }
         }
       }
 
@@ -459,6 +484,41 @@ export const createVendorPayment = async (req: Request, res: Response) => {
           postedAt: new Date()
         }
       });
+
+      // Create bank transaction for outgoing payment
+      try {
+        // Create bank transaction for the payment method used
+        const paymentMethod = await tx.paymentMethod.findFirst({
+          where: { 
+            id: validatedData.paidThroughId,
+            tenantId,
+            isActive: true 
+          }
+        });
+
+        if (paymentMethod) {
+          // Create outgoing bank transaction (negative amount for withdrawals)
+          await tx.bankTransaction.create({
+            data: {
+              tenantId,
+              paymentMethodId: paymentMethod.id,
+              description: `Payment to ${vendor.name} - ${paymentNumber}`,
+              amount: -netAmount, // Negative amount for withdrawals
+              type: 'WITHDRAWAL',
+              transactionDate: new Date(validatedData.paymentDate || new Date()),
+              reference: validatedData.referenceNumber,
+              status: 'cleared',
+              reconciled: false,
+              runningBalance: 0, // Will be calculated by balance update logic
+              debitAmount: netAmount,
+              creditAmount: 0
+            }
+          });
+        }
+      } catch (bankError) {
+        console.warn('Failed to create bank transaction:', bankError);
+        // Don't fail the whole payment creation if bank transaction fails
+      }
 
       return vendorPayment;
     }, {

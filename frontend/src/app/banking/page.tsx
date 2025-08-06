@@ -68,6 +68,7 @@ const BankingPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [reconciledToday, setReconciledToday] = useState(0);
 
     // Load banking data from API
   const loadBankingData = async () => {
@@ -96,8 +97,8 @@ const BankingPage: React.FC = () => {
           currency: pm.currency || 'MMK',
           branch: pm.branch || '',
           description: pm.description || '',
-          balance: pm.balance || 0,
-          reconciledBalance: pm.reconciledBalance || 0,
+          balance: pm.balance || 0, // Use actual balance from API
+          reconciledBalance: pm.reconciledBalance || 0, // Use actual reconciled balance from API
           unreconciledTransactions: pm.unreconciledTransactions || 0,
           lastReconciled: pm.lastReconciled || null,
           isDefault: pm.isDefault || false,
@@ -105,48 +106,55 @@ const BankingPage: React.FC = () => {
         }));
         
         setBankAccounts(transformedAccounts);
+
+        // Load real transactions from the first bank account for the transactions list
+        if (transformedAccounts.length > 0) {
+          const firstAccount = transformedAccounts[0];
+          try {
+            const transactionResponse = await fetch(`${API_URL}/banking/payment-methods/${firstAccount.id}/transactions?page=1&limit=50&status=all`, {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Tenant-ID': 'default'
+              }
+            });
+
+            if (transactionResponse.ok) {
+              const transactionData = await transactionResponse.json();
+              
+              // Transform real transactions to the expected format
+              const realTransactions: BankTransaction[] = transactionData.transactions.map((tx: any) => ({
+                id: tx.id,
+                date: new Date(tx.transactionDate).toLocaleDateString('en-US'),
+                description: tx.description,
+                reference: tx.reference || 'N/A',
+                amount: tx.amount,
+                type: tx.type === 'DEPOSIT' ? 'deposit' : 'withdrawal',
+                status: tx.status || 'cleared',
+                category: tx.category || 'Other',
+                reconciled: tx.reconciled || false
+              }));
+              
+              setTransactions(realTransactions);
+              
+              // Update reconciled count
+              const reconciledCount = transactionData.transactions.filter((tx: any) => tx.reconciled).length;
+              setReconciledToday(reconciledCount);
+            } else {
+              setTransactions([]);
+            }
+          } catch (error) {
+            console.error('Error loading transactions:', error);
+            setTransactions([]);
+          }
+        } else {
+          setTransactions([]);
+        }
       } else {
         console.error('Failed to load bank accounts');
         // Fallback to empty array
         setBankAccounts([]);
+        setTransactions([]);
       }
-
-      // For now, use mock transactions until bank transactions API is implemented
-      setTransactions([
-        {
-          id: '1',
-          date: '2025-07-29',
-          description: 'Customer Payment - Sweet Connect',
-          reference: 'PAY-001',
-          amount: 2200000.00,
-          type: 'deposit',
-          status: 'cleared',
-          category: 'Customer Payment',
-          reconciled: true
-        },
-        {
-          id: '2',
-          date: '2025-07-28',
-          description: 'Interest for A Bank Loan',
-          reference: 'INT-001',
-          amount: -10000000.00,
-          type: 'withdrawal',
-          status: 'pending',
-          category: 'Interest Expenses',
-          reconciled: false
-        },
-        {
-          id: '3',
-          date: '2025-07-27',
-          description: 'Software Expense - Atlassian',
-          reference: 'EXP-001',
-          amount: -319763.90,
-          type: 'withdrawal',
-          status: 'cleared',
-          category: 'Software',
-          reconciled: true
-        }
-      ]);
 
     } catch (error) {
       console.error('Error loading banking data:', error);
@@ -374,7 +382,7 @@ const BankingPage: React.FC = () => {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-500">Reconciled Today</p>
-                <p className="text-2xl font-bold text-gray-900">3</p>
+                <p className="text-2xl font-bold text-gray-900">{reconciledToday}</p>
               </div>
             </div>
           </div>

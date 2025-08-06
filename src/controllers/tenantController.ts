@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-import { AccountingService } from '@/services/accountingService';
+import { AccountingService } from '@/accounting/AccountingService';
 import { UserRole } from '@/types';
 
 export class TenantController {

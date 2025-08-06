@@ -263,11 +263,18 @@ export class ReportsController {
           journalGroups[journalId] = {
             journalId,
             date: entry.postedAt,
+            createdAt: entry.createdAt, // Add createdAt for sorting
             reference: entry.reference,
             entries: [],
             totalDebits: 0,
             totalCredits: 0
           };
+        } else {
+          // Update with the most recent createdAt timestamp
+          if (entry.createdAt && (!journalGroups[journalId].createdAt || 
+              new Date(entry.createdAt) > new Date(journalGroups[journalId].createdAt))) {
+            journalGroups[journalId].createdAt = entry.createdAt;
+          }
         }
 
         const amount = parseFloat(entry.amount.toString());
@@ -288,11 +295,23 @@ export class ReportsController {
         }
       });
 
-      const journalEntries = Object.values(journalGroups).map((journal: any) => ({
-        ...journal,
-        isBalanced: Math.abs(journal.totalDebits - journal.totalCredits) < 0.01,
-        entryCount: journal.entries.length
-      }));
+      const journalEntries = Object.values(journalGroups)
+        .map((journal: any) => ({
+          ...journal,
+          isBalanced: Math.abs(journal.totalDebits - journal.totalCredits) < 0.01,
+          entryCount: journal.entries.length
+        }))
+        .sort((a: any, b: any) => {
+          // Sort by createdAt (most recent first), then by journal ID (descending)
+          if (a.createdAt && b.createdAt) {
+            const createdAtComparison = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            if (createdAtComparison !== 0) return createdAtComparison;
+          }
+          
+          // Fallback to journal ID sorting (newest first)
+          // Simple reverse alphabetical sort works well for most patterns
+          return b.journalId.localeCompare(a.journalId);
+        });
 
       const summary = {
         totalJournalEntries: journalEntries.length,

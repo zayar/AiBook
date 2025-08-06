@@ -82,3 +82,6 @@ frontend/.env*.local
 # Frontend build files
 frontend/build/
 frontend/dist/
+credentials/
+*.json
+.env.google-cloud

@@ -157,26 +157,65 @@ class InvoiceController {
 
       // Create journal entries only if status is SENT
       let journalEntries = null;
+      let cogsCalculations = [];
       if (validatedData.status === 'SENT') {
         const accountingService = new AccountingService({ tenantId });
         journalEntries = await accountingService.createInvoiceJournalEntries(invoice);
         console.log('✅ Invoice created as SENT - journal entries created');
+
+        // Calculate and record COGS for inventory items
+        for (const item of invoice.items) {
+          if (item.inventoryItemId) {
+            try {
+              console.log(`🔄 Calculating COGS for inventory item: ${item.inventoryItemId}`);
+              
+              const cogsResult = await accountingService.calculateCOGS({
+                invoiceItemId: item.id,
+                inventoryItemId: item.inventoryItemId,
+                quantitySold: parseFloat(item.quantity.toString()),
+                saleDate: invoice.issueDate,
+                reference: `INV-${invoice.invoiceNumber}-${item.id}`
+              });
+
+              cogsCalculations.push({
+                itemId: item.id,
+                inventoryItemId: item.inventoryItemId,
+                totalCOGS: cogsResult.totalCOGS,
+                averageCostPerUnit: cogsResult.averageCostPerUnit,
+                journalEntryId: cogsResult.journalEntryId
+              });
+
+              console.log(`✅ COGS calculated for item ${item.inventoryItemId}: $${cogsResult.totalCOGS.toFixed(2)}`);
+            } catch (error) {
+              console.error(`❌ Error calculating COGS for item ${item.inventoryItemId}:`, error);
+              // Continue with other items even if one fails
+            }
+          }
+        }
+
+        if (cogsCalculations.length > 0) {
+          console.log(`✅ COGS calculated for ${cogsCalculations.length} inventory items`);
+        }
       } else {
-        console.log('✅ Invoice created as DRAFT - no journal entries created');
+        console.log('✅ Invoice created as DRAFT - no journal entries or COGS calculated');
       }
 
       res.status(201).json({
         message: 'Invoice created successfully',
         invoice,
         journalEntries: journalEntries,
+        cogsCalculations: cogsCalculations,
         accountingNote: validatedData.status === 'SENT' 
-          ? 'Journal entries created for revenue recognition'
-          : 'Journal entries will be created when invoice is sent',
+          ? `Journal entries created for revenue recognition${cogsCalculations.length > 0 ? ' and COGS calculated' : ''}`
+          : 'Journal entries and COGS will be calculated when invoice is sent',
         aiEnhancements: {
           autoCategorization: 'Applied to uncoded items',
           journalEntries: validatedData.status === 'SENT' 
             ? `Created ${journalEntries?.entries?.length || 0} journal entries`
             : 'Pending - will create when invoice is sent',
+          cogsCalculation: validatedData.status === 'SENT' && cogsCalculations.length > 0
+            ? `Calculated COGS for ${cogsCalculations.length} inventory items`
+            : 'No inventory items or pending calculation',
           complianceCheck: 'Passed'
         }
       });
@@ -248,11 +287,47 @@ class InvoiceController {
         
         console.log('✅ Invoice sent and journal entries created:', journalEntries);
 
+        // Calculate and record COGS for inventory items
+        const cogsCalculations = [];
+        for (const item of updatedInvoice.items) {
+          if (item.inventoryItemId) {
+            try {
+              console.log(`🔄 Calculating COGS for inventory item: ${item.inventoryItemId}`);
+              
+              const cogsResult = await accountingService.calculateCOGS({
+                invoiceItemId: item.id,
+                inventoryItemId: item.inventoryItemId,
+                quantitySold: parseFloat(item.quantity.toString()),
+                saleDate: updatedInvoice.issueDate,
+                reference: `INV-${updatedInvoice.invoiceNumber}-${item.id}`
+              });
+
+              cogsCalculations.push({
+                itemId: item.id,
+                inventoryItemId: item.inventoryItemId,
+                totalCOGS: cogsResult.totalCOGS,
+                averageCostPerUnit: cogsResult.averageCostPerUnit,
+                journalEntryId: cogsResult.journalEntryId
+              });
+
+              console.log(`✅ COGS calculated for item ${item.inventoryItemId}: $${cogsResult.totalCOGS.toFixed(2)}`);
+            } catch (cogsError) {
+              console.error(`❌ Error calculating COGS for item ${item.inventoryItemId}:`, cogsError);
+              // Continue with other items even if one fails
+            }
+          }
+        }
+
+        if (cogsCalculations.length > 0) {
+          console.log(`✅ COGS calculated for ${cogsCalculations.length} inventory items`);
+        }
+
         res.status(200).json({
           message: 'Invoice sent successfully',
           invoice: updatedInvoice,
           journalEntries: journalEntries,
-          accountingNote: 'Journal entries created for revenue recognition'
+          cogsCalculations: cogsCalculations,
+          accountingNote: `Journal entries created for revenue recognition${cogsCalculations.length > 0 ? ' and COGS calculated' : ''}`
         });
       } catch (accountingError) {
         console.error('❌ Accounting error during invoice send:', accountingError);
@@ -262,7 +337,8 @@ class InvoiceController {
           message: 'Invoice sent successfully (journal entries failed)',
           invoice: updatedInvoice,
           journalEntries: null,
-          accountingNote: 'Invoice status updated but journal entry creation failed',
+          cogsCalculations: [],
+          accountingNote: 'Invoice status updated but journal entry and COGS calculation failed',
           accountingError: accountingError instanceof Error ? accountingError.message : 'Unknown accounting error'
         });
       }
@@ -290,7 +366,7 @@ class InvoiceController {
         customerId, 
         page = 1, 
         limit = 20,
-        sortBy = 'issueDate',
+        sortBy = 'createdAt',
         sortOrder = 'desc',
         search
       } = req.query;
@@ -757,22 +833,79 @@ class InvoiceController {
         return;
       }
 
-      // Get journal entries for this invoice from database (only for non-DRAFT invoices)
+      // Get all payments for this invoice first
+      const payments = await prisma.invoicePayment.findMany({
+        where: {
+          invoiceId: invoice.id,
+          tenantId
+        }
+      });
+
+      // Get journal entries specifically for this invoice
+      // Only return entries that are actually related to this specific invoice
       const journalEntries = await prisma.entry.findMany({
         where: {
           tenantId,
-          reference: invoice.invoiceNumber
+          AND: [
+            // Must be created after the invoice was created
+            { createdAt: { gte: invoice.createdAt } },
+            {
+              OR: [
+                // 1. Direct reference match (invoice creation entries)
+                { reference: invoice.invoiceNumber },
+                
+                // 2. Payment entries by payment reference
+                ...payments.map(payment => ({ reference: payment.reference })).filter(criteria => criteria.reference),
+                
+                // 3. Memo containing the specific invoice number
+                { memo: { contains: `Invoice ${invoice.invoiceNumber}` } },
+                { memo: { contains: `A/R - Invoice ${invoice.invoiceNumber}` } },
+                { memo: { contains: `Sales Revenue - Invoice ${invoice.invoiceNumber}` } },
+                
+                // 4. Search by invoice ID in memo
+                { memo: { contains: invoice.id } }
+              ]
+            }
+          ]
         },
         include: {
           account: {
             select: {
+              id: true,
               code: true,
               name: true,
               type: true
             }
           }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: [
+          { journalId: 'desc' }, // Latest journal first
+          { type: 'asc' } // DEBITs before CREDITs within same journal
+        ]
+      });
+
+      console.log('🔍 Journal entries search results:', {
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        paymentsCount: payments.length,
+        paymentReferences: payments.map(p => p.reference),
+        entriesFound: journalEntries.length,
+        journalIds: [...new Set(journalEntries.map(e => e.journalId))],
+        searchCriteria: searchCriteria.length,
+        memoSearch: `"${invoice.invoiceNumber}"`
+      });
+
+      // Log the search results for debugging
+      console.log('🔍 Journal entries search results:', {
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceCreatedAt: invoice.createdAt,
+        paymentsCount: payments.length,
+        paymentReferences: payments.map(p => p.reference),
+        entriesFound: journalEntries.length,
+        journalIds: [...new Set(journalEntries.map(e => e.journalId))],
+        entryReferences: journalEntries.map(e => e.reference),
+        entryMemos: journalEntries.map(e => e.memo)
       });
 
       res.json({
@@ -1081,6 +1214,21 @@ class InvoiceController {
           items: true
         }
       });
+
+      // CRITICAL ALE FIX: Ensure invoice has revenue recognition entries first
+      // If invoice was DRAFT and is now being paid, we need to create revenue recognition entries
+      let invoiceJournalEntries = null;
+      if (invoice.status === 'DRAFT') {
+        try {
+          // First, create revenue recognition entries (DEBIT A/R, CREDIT Sales Revenue)
+          const accountingService = new AccountingService({ tenantId });
+          invoiceJournalEntries = await accountingService.createInvoiceJournalEntries(updatedInvoice);
+          console.log('✅ Created missing revenue recognition entries for DRAFT invoice:', invoiceJournalEntries);
+        } catch (error) {
+          console.error('❌ Failed to create revenue recognition entries:', error);
+          // Continue with payment, but log the issue
+        }
+      }
 
       // Create journal entries for payment (ALE accounting flow)
       const accountingService = new AccountingService({ tenantId });

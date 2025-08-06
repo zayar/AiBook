@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { OpenAIService } from '../services/OpenAIService.ts';
+import { OpenAIService } from '../services/OpenAIService';
 
 export interface FinancialAnomaly {
   id: string;

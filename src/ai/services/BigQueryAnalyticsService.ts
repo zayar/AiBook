@@ -90,9 +90,7 @@ export class BigQueryAnalyticsService {
       const [job] = await this.bigQuery.createQueryJob({
         query: sqlQuery,
         location: 'US',
-        jobConfig: {
-          labels: { tenant: query.tenantId, type: 'trend_analysis' }
-        }
+        labels: { tenant: query.tenantId, type: 'trend_analysis' }
       });
 
       const [rows] = await job.getQueryResults();
@@ -450,10 +448,14 @@ export class BigQueryAnalyticsService {
 
     for (const table of tables) {
       try {
-        await this.bigQuery
+        const [tableObj] = await this.bigQuery
           .dataset(this.datasetId)
           .table(table.name)
-          .get({ autoCreate: true, schema: table.schema });
+          .get({ autoCreate: true });
+        
+        if (tableObj.metadata.schema === undefined) {
+          await tableObj.setMetadata({ schema: table.schema });
+        }
         
         console.log(`✅ Created/verified table: ${table.name}`);
       } catch (error) {

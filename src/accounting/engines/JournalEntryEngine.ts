@@ -571,25 +571,34 @@ export class JournalEntryEngine {
    * Create unique journal entry number
    */
   private async generateEntryNumber(): Promise<string> {
-    const lastEntry = await prisma.entry.findFirst({
-      where: { tenantId: this.tenantId },
+    // Look specifically for JE- entries to maintain proper sequence for this engine
+    const lastJEEntry = await prisma.entry.findFirst({
+      where: { 
+        tenantId: this.tenantId,
+        journalId: { startsWith: 'JE-' }
+      },
       orderBy: { createdAt: 'desc' }
     });
 
-    if (!lastEntry) {
+    if (!lastJEEntry || !lastJEEntry.journalId) {
       return '0001';
     }
 
     // Extract number from journalId (e.g., "JE-0001" -> 1)
-    const journalIdParts = lastEntry.journalId.split('-');
+    const journalIdParts = lastJEEntry.journalId.split('-');
     const lastNumberStr = journalIdParts[journalIdParts.length - 1] || '0';
-    const lastNumber = parseInt(lastNumberStr);
     
-    if (isNaN(lastNumber)) {
+    // Clean the number string - remove any non-digit characters
+    const cleanNumberStr = lastNumberStr.replace(/\D/g, '');
+    const lastNumber = parseInt(cleanNumberStr, 10);
+    
+    if (isNaN(lastNumber) || lastNumber < 0) {
+      console.warn(`Invalid JE journal entry number found: ${lastJEEntry.journalId}, starting from 0001`);
       return '0001';
     }
     
-    return String(lastNumber + 1).padStart(4, '0');
+    const nextNumber = lastNumber + 1;
+    return String(nextNumber).padStart(4, '0');
   }
 
   /**

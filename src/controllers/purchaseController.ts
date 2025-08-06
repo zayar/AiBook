@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import aiService from '@/services/aiService';
-import { AccountingService } from '@/services/accountingService';
+import { AccountingService } from '@/accounting/AccountingService';
 
 const prisma = new PrismaClient();
 

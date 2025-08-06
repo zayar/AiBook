@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 import { z } from 'zod';
 import aiService from '@/services/aiService';
-import { AccountingService } from '@/services/accountingService';
+import { AccountingService } from '@/accounting/AccountingService';
 
 // Validation schemas
 const createSalesOrderSchema = z.object({

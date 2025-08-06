@@ -66,6 +66,7 @@ const purchasesGroup = [
 const standaloneItems = [
   { name: 'Chart of Accounts', href: '/chart-of-accounts', icon: PieChart, badge: 'ALE' },
   { name: 'Taxes', href: '/taxes', icon: Calculator, badge: 'VAT' },
+  { name: 'Organization Profile', href: '/organization', icon: Building2, badge: 'Settings' },
 ]
 
 const aiFeatures = [

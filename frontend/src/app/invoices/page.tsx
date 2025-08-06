@@ -81,7 +81,7 @@ interface AIInsights {
   };
 }
 
-type SortField = 'invoiceNumber' | 'customer' | 'issueDate' | 'dueDate' | 'totalAmount' | 'status';
+type SortField = 'invoiceNumber' | 'customer' | 'issueDate' | 'dueDate' | 'totalAmount' | 'status' | 'createdAt';
 type SortDirection = 'asc' | 'desc';
 
 export default function InvoicesPage() {
@@ -99,7 +99,7 @@ export default function InvoicesPage() {
   const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
   const [aiInsights, setAiInsights] = useState<AIInsights | null>(null);
   const [showAIPanel, setShowAIPanel] = useState(true);
-  const [sortField, setSortField] = useState<SortField>('issueDate');
+  const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   // Pagination

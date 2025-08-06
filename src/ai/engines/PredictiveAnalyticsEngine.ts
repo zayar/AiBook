@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { OpenAIService } from '../services/OpenAIService.ts';
+import { OpenAIService } from '../services/OpenAIService';
 
 export interface PredictionResult {
   type: 'cash_flow' | 'revenue' | 'expense' | 'budget_variance';
@@ -197,7 +197,7 @@ export class PredictiveAnalyticsEngine {
     console.log(`🚨 Running anomaly detection for tenant: ${tenantId}`);
 
     try {
-      const anomalies = [];
+      const anomalies: any[] = [];
       
       // 1. Check for unusual expenses
       const expenseAnomalies = await this.detectExpenseAnomalies(tenantId);
@@ -247,7 +247,7 @@ export class PredictiveAnalyticsEngine {
 
   private async analyzeSeasonalPatterns(historicalData: any) {
     // Group data by month and analyze patterns
-    const monthlyData = {};
+    const monthlyData: Record<number, { revenue: number; expenses: number }> = {};
     
     // Process invoices
     historicalData.invoices.forEach((invoice: any) => {
@@ -279,7 +279,7 @@ export class PredictiveAnalyticsEngine {
       currentTrends: await this.getCurrentTrends(tenantId)
     };
 
-    const aiPrediction = await this.openAI.getChatCompletion([
+    const aiPrediction = await this.openAI.chatCompletion([
       {
         role: 'system',
         content: `You are a financial forecasting AI. Analyze the provided data and predict cash flow for month ${month}. Return a JSON response with inflow, outflow, confidence (0-1), riskFactors array, and opportunities array.`
@@ -320,7 +320,7 @@ export class PredictiveAnalyticsEngine {
 
   private async analyzeRevenueTrends(revenueHistory: any[]) {
     // Calculate month-over-month growth
-    const monthlyRevenue = {};
+    const monthlyRevenue: Record<string, number> = {};
     
     revenueHistory.forEach(invoice => {
       const monthKey = new Date(invoice.createdAt).toISOString().substring(0, 7);
@@ -376,17 +376,16 @@ export class PredictiveAnalyticsEngine {
         expenseDate: { gte: startDate }
       },
       include: {
-        vendor: true,
-        account: true
+        vendor: true
       }
     });
   }
 
   private async categorizeExpenses(expenses: any[]) {
-    const categories = {};
+    const categories: Record<string, { total: number; count: number; expenses: any[] }> = {};
     
     expenses.forEach(expense => {
-      const category = expense.account?.name || 'Uncategorized';
+      const category = expense.description || 'Uncategorized';
       if (!categories[category]) {
         categories[category] = {
           total: 0,
@@ -402,7 +401,7 @@ export class PredictiveAnalyticsEngine {
     return categories;
   }
 
-  private async identifyOptimizationOpportunities(categories: any) {
+  private async identifyOptimizationOpportunities(categories: Record<string, { total: number; count: number; expenses: any[] }>) {
     const opportunities = [];
     
     for (const [category, data] of Object.entries(categories)) {
@@ -456,7 +455,7 @@ export class PredictiveAnalyticsEngine {
   }
 
   private getSeasonalFactors(month: number): string[] {
-    const seasonalFactors = {
+    const seasonalFactors: Record<number, string[]> = {
       0: ['New Year slowdown', 'Q1 budget planning'],
       1: ['Valentine Day boost', 'Tax preparation'],
       2: ['Spring activity increase'],
@@ -487,14 +486,16 @@ export class PredictiveAnalyticsEngine {
 
   private async storePredictions(tenantId: string, type: string, predictions: any) {
     try {
-      await this.prisma.predictionCache.create({
-        data: {
-          tenantId,
-          cacheKey: `${type}_${Date.now()}`,
-          predictions: JSON.stringify(predictions),
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-        }
-      });
+              await this.prisma.predictionCache.create({
+          data: {
+            tenantId,
+            predictionType: type,
+            inputHash: `${type}_${Date.now()}`,
+            prediction: predictions,
+            confidence: 0.85,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+          }
+        });
     } catch (error) {
       console.warn('Failed to store predictions:', error);
     }

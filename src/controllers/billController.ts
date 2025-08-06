@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { PrismaClient, BillStatus, EntryType } from '@prisma/client';
 import prismaWithTenant from '../utils/prismaWithTenant';
+import { AccountingService } from '../accounting/AccountingService';
 
 // Helper function to handle null, empty strings, and undefined for optional string fields
 const optionalString = () => z.union([
@@ -24,6 +25,7 @@ const billItemSchema = z.object({
   unitPrice: requiredDecimal(),
   taxRate: z.number().default(0),
   accountCode: optionalString(),
+  inventoryItemId: optionalString(), // For inventory items that need COGS tracking
 });
 
 const billSchema = z.object({
@@ -284,24 +286,50 @@ export class BillController {
           }
         });
 
-        // Create bill items using createMany for better performance
-        await tx.billItem.createMany({
-          data: calculatedItems.map(item => ({
-            billId: bill.id,
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            taxRate: item.taxRate,
-            accountCode: item.accountCode || '6000', // Default to Office Expenses
-            tenantId
-          }))
-        });
+        // Create bill items individually to handle inventory items and COGS tracking
+        const billItems = [];
+        const accountingService = new AccountingService({ tenantId });
 
-        // Fetch the created bill items for journal entries
-        const billItems = await tx.billItem.findMany({
-          where: { billId: bill.id }
-        });
+        for (const item of calculatedItems) {
+          // Create bill item
+          const billItem = await tx.billItem.create({
+            data: {
+              billId: bill.id,
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+              taxRate: item.taxRate,
+              accountCode: item.accountCode || '6000', // Default to Office Expenses
+              inventoryItemId: item.inventoryItemId,
+              tenantId
+            }
+          });
+
+          billItems.push(billItem);
+
+          // If this is an inventory item, create cost layer for FIFO tracking
+          if (item.inventoryItemId) {
+            try {
+              console.log(`🔄 Creating cost layer for inventory item: ${item.inventoryItemId}`);
+              
+              await accountingService.recordInventoryPurchase({
+                inventoryItemId: item.inventoryItemId,
+                quantity: item.quantity,
+                unitCost: item.unitPrice,
+                purchaseDate: bill.billDate,
+                billItemId: billItem.id,
+                reference: `BILL-${bill.billNumber}-${billItem.id}`
+              });
+
+              console.log(`✅ Cost layer created for ${item.quantity} units at $${item.unitPrice} each`);
+            } catch (error) {
+              console.error(`❌ Error creating cost layer for item ${item.inventoryItemId}:`, error);
+              // Don't fail the entire transaction, but log the error
+              // In production, you might want to handle this differently
+            }
+          }
+        }
 
         // Create journal entries for double-entry accounting
         await BillController.createJournalEntries(tx, bill, billItems, tenantId);
