@@ -53,6 +53,9 @@ import toast from 'react-hot-toast'
 import TransactionForm from './TransactionForm'
 import AIChat from './AIChat'
 import AICopilotChat from './AICopilotChat'
+import EnhancedConversationalChat from './EnhancedConversationalChat'
+import AICommandBar from './AICommandBar'
+import SimpleAIWidget from './SimpleAIWidget'
 import UltraEnhancedLoading from './UltraEnhancedLoading'
 
 interface DashboardStats {
@@ -90,6 +93,7 @@ export default function AIDashboard() {
   const [showTransactionForm, setShowTransactionForm] = useState(false)
   const [showAIChat, setShowAIChat] = useState(false)
   const [showAICopilot, setShowAICopilot] = useState(false)
+  const [showEnhancedChat, setShowEnhancedChat] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
 
   // Mock data for charts
@@ -262,6 +266,9 @@ export default function AIDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
+      {/* AI Command Bar */}
+      <AICommandBar />
+      
       {/* AI Hero Section */}
       <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800">
         <div className="absolute inset-0">
@@ -445,6 +452,24 @@ export default function AIDashboard() {
                     </div>
                     <h3 className="font-semibold text-gray-900 mb-2">Smart Transaction Entry</h3>
                     <p className="text-sm text-gray-600">AI-powered entry with OCR receipt scanning and auto-categorization</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setShowEnhancedChat(true)}
+                  className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 opacity-0 group-hover:opacity-5 transition-opacity" />
+                  <div className="relative">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mb-4">
+                      <Brain className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="font-semibold text-gray-900 mb-2">Enhanced AI Assistant</h3>
+                    <p className="text-sm text-gray-600">Advanced conversational AI with context memory and smart reporting</p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                      <span className="text-xs text-green-600 font-medium">Phase 3 • New</span>
+                    </div>
                   </div>
                 </button>
 
@@ -652,6 +677,11 @@ export default function AIDashboard() {
             </motion.div>
           </div>
         </div>
+        
+        {/* AI Smart Widgets Section */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <SimpleAIWidget />
+        </div>
       </div>
 
       {/* Modals */}
@@ -670,6 +700,36 @@ export default function AIDashboard() {
           />
         )}
         
+        {showEnhancedChat && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowEnhancedChat(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="absolute top-4 right-4 z-10">
+                <button
+                  onClick={() => setShowEnhancedChat(false)}
+                  className="p-2 text-gray-400 hover:text-gray-600 bg-white rounded-lg shadow-sm hover:bg-gray-50"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="h-full">
+                <EnhancedConversationalChat />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {showAICopilot && (
           <motion.div
             initial={{ opacity: 0 }}

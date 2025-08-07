@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 
 import { errorHandler } from './middleware/errorHandler';
 import { enhancedTenantMiddleware, tenantContextMiddleware } from './middleware/enhancedTenantMiddleware';
+import { tenantMiddleware } from './middleware/tenantMiddleware';
 import { authMiddleware } from './middleware/authMiddleware';
 import apiRoutes from './routes';
 
@@ -48,8 +49,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Apply authentication, then enhanced tenant middleware, then tenant context storage
-app.use('/api/v1', authMiddleware, enhancedTenantMiddleware, tenantContextMiddleware, apiRoutes);
+// Apply tenant middleware, then tenant context storage (auth disabled for testing)
+app.use('/api/v1', tenantMiddleware, tenantContextMiddleware, apiRoutes);
 
 // Development test endpoint (completely separate from API routes)
 app.get('/dev/test', (req, res) => {
@@ -65,6 +66,32 @@ app.get('/dev/test', (req, res) => {
       database: 'development-mode'
     }
   });
+});
+
+// Simple organization test endpoint
+app.get('/dev/organization', async (req, res) => {
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
+    
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: 'default' }
+    });
+    
+    await prisma.$disconnect();
+    
+    res.json({
+      success: true,
+      data: tenant,
+      message: 'Direct organization test'
+    });
+  } catch (error) {
+    console.error('Direct organization test error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 

@@ -6,11 +6,25 @@ import prisma from '../utils/prismaWithTenant';
 const AccountCreateSchema = z.object({
   code: z.string().min(1, 'Account code is required').max(10, 'Account code too long'),
   name: z.string().min(1, 'Account name is required').max(100, 'Account name too long'),
-  type: z.enum(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'], {
+  type: z.enum([
+    // Asset sub-types
+    'OTHER_ASSET', 'OTHER_CURRENT_ASSET', 'CASH', 'BANK', 'FIXED_ASSET',
+    'ACCOUNTS_RECEIVABLE', 'STOCK', 'PAYMENT_CLEARING_ACCOUNT', 'INPUT_TAX',
+    'INTANGIBLE_ASSET', 'NON_CURRENT_ASSET', 'DEFERRED_TAX_ASSET',
+    // Liability sub-types
+    'OTHER_CURRENT_LIABILITY', 'CREDIT_CARD', 'NON_CURRENT_LIABILITY',
+    'OTHER_LIABILITY', 'ACCOUNTS_PAYABLE', 'OVERSEAS_TAX_PAYABLE',
+    'OUTPUT_TAX', 'DEFERRED_TAX_LIABILITY',
+    // Equity sub-types
+    'EQUITY',
+    // Income sub-types
+    'INCOME', 'OTHER_INCOME',
+    // Expense sub-types
+    'EXPENSE', 'COST_OF_GOODS_SOLD', 'OTHER_EXPENSE'
+  ], {
     errorMap: () => ({ message: 'Invalid account type' })
   }),
   currency: z.string().default('MMK'),
-  parentId: z.string().optional(),
   description: z.string().optional(),
   isActive: z.boolean().default(true),
 });
@@ -21,12 +35,42 @@ const AccountListSchema = z.object({
   page: z.string().optional().transform(val => val ? parseInt(val) : 1),
   limit: z.string().optional().transform(val => val ? parseInt(val) : 50),
   search: z.string().optional(),
-  type: z.enum(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']).optional(),
+  category: z.enum(['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE']).optional(),
   isActive: z.string().optional().transform(val => val === undefined ? undefined : val === 'true'),
   includeHierarchy: z.string().optional().transform(val => val === 'true'),
   sortBy: z.enum(['code', 'name', 'type', 'balance', 'createdAt']).optional().default('code'),
   sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
 });
+
+// Helper function to map account sub-types to main categories
+const getAccountCategory = (type: string): string => {
+  const assetTypes = ['OTHER_ASSET', 'OTHER_CURRENT_ASSET', 'CASH', 'BANK', 'FIXED_ASSET', 'ACCOUNTS_RECEIVABLE', 'STOCK', 'PAYMENT_CLEARING_ACCOUNT', 'INPUT_TAX', 'INTANGIBLE_ASSET', 'NON_CURRENT_ASSET', 'DEFERRED_TAX_ASSET'];
+  const liabilityTypes = ['OTHER_CURRENT_LIABILITY', 'CREDIT_CARD', 'NON_CURRENT_LIABILITY', 'OTHER_LIABILITY', 'ACCOUNTS_PAYABLE', 'OVERSEAS_TAX_PAYABLE', 'OUTPUT_TAX', 'DEFERRED_TAX_LIABILITY'];
+  const equityTypes = ['EQUITY'];
+  const incomeTypes = ['INCOME', 'OTHER_INCOME'];
+  const expenseTypes = ['EXPENSE', 'COST_OF_GOODS_SOLD', 'OTHER_EXPENSE'];
+
+  if (assetTypes.includes(type)) return 'ASSET';
+  if (liabilityTypes.includes(type)) return 'LIABILITY';
+  if (equityTypes.includes(type)) return 'EQUITY';
+  if (incomeTypes.includes(type)) return 'INCOME';
+  if (expenseTypes.includes(type)) return 'EXPENSE';
+  
+  return type; // fallback
+};
+
+// Helper function to get account types by main category
+const getAccountTypesByCategory = (category: string): string[] => {
+  const typeMap = {
+    'ASSET': ['OTHER_ASSET', 'OTHER_CURRENT_ASSET', 'CASH', 'BANK', 'FIXED_ASSET', 'ACCOUNTS_RECEIVABLE', 'STOCK', 'PAYMENT_CLEARING_ACCOUNT', 'INPUT_TAX', 'INTANGIBLE_ASSET', 'NON_CURRENT_ASSET', 'DEFERRED_TAX_ASSET'],
+    'LIABILITY': ['OTHER_CURRENT_LIABILITY', 'CREDIT_CARD', 'NON_CURRENT_LIABILITY', 'OTHER_LIABILITY', 'ACCOUNTS_PAYABLE', 'OVERSEAS_TAX_PAYABLE', 'OUTPUT_TAX', 'DEFERRED_TAX_LIABILITY'],
+    'EQUITY': ['EQUITY'],
+    'INCOME': ['INCOME', 'OTHER_INCOME'],
+    'EXPENSE': ['EXPENSE', 'COST_OF_GOODS_SOLD', 'OTHER_EXPENSE']
+  };
+  
+  return typeMap[category as keyof typeof typeMap] || [];
+};
 
 /**
  * 📊 LIST ALL ACCOUNTS WITH ADVANCED FILTERING
@@ -39,14 +83,18 @@ export const listAccounts = async (req: Request, res: Response) => {
     
     // Parse and validate query parameters
     const query = AccountListSchema.parse(req.query);
-    const { page, limit, search, type, isActive, includeHierarchy, sortBy, sortOrder } = query;
+    const { page, limit, search, category, isActive, includeHierarchy, sortBy, sortOrder } = query;
     
     const skip = (page - 1) * limit;
 
-    // Build where clause
+    // Build where clause  
     const where: any = {
       tenantId,
-      ...(type && { type }),
+      ...(category && { 
+        type: { 
+          in: getAccountTypesByCategory(category)
+        }
+      }),
       ...(isActive !== undefined && { isActive }),
       ...(search && {
         OR: [
@@ -98,13 +146,13 @@ export const listAccounts = async (req: Request, res: Response) => {
       return acc;
     }, {} as Record<string, any[]>);
 
-    // Calculate summary statistics
+    // Calculate summary statistics using account categories
     const summary = {
-      totalAssets: accounts.filter(a => a.type === 'ASSET').reduce((sum, a) => sum + Number(a.balance), 0),
-      totalLiabilities: accounts.filter(a => a.type === 'LIABILITY').reduce((sum, a) => sum + Number(a.balance), 0),
-      totalEquity: accounts.filter(a => a.type === 'EQUITY').reduce((sum, a) => sum + Number(a.balance), 0),
-      totalRevenue: accounts.filter(a => a.type === 'REVENUE').reduce((sum, a) => sum + Number(a.balance), 0),
-      totalExpenses: accounts.filter(a => a.type === 'EXPENSE').reduce((sum, a) => sum + Number(a.balance), 0),
+      totalAssets: accounts.filter(a => getAccountCategory(a.type) === 'ASSET').reduce((sum, a) => sum + Number(a.balance), 0),
+      totalLiabilities: accounts.filter(a => getAccountCategory(a.type) === 'LIABILITY').reduce((sum, a) => sum + Number(a.balance), 0),
+      totalEquity: accounts.filter(a => getAccountCategory(a.type) === 'EQUITY').reduce((sum, a) => sum + Number(a.balance), 0),
+      totalRevenue: accounts.filter(a => getAccountCategory(a.type) === 'INCOME').reduce((sum, a) => sum + Number(a.balance), 0),
+      totalExpenses: accounts.filter(a => getAccountCategory(a.type) === 'EXPENSE').reduce((sum, a) => sum + Number(a.balance), 0),
     };
 
     res.status(200).json({
@@ -260,27 +308,7 @@ export const createAccount = async (req: Request, res: Response) => {
       });
     }
 
-    // Validate parent account if specified
-    if (data.parentId) {
-      const parentAccount = await prisma.account.findFirst({
-        where: { id: data.parentId, tenantId },
-      });
-
-      if (!parentAccount) {
-        return res.status(400).json({
-          error: 'Parent account not found',
-        });
-      }
-
-      // Ensure parent and child are of compatible types
-      if (parentAccount.type !== data.type) {
-        return res.status(400).json({
-          error: 'Parent and child accounts must be of the same type',
-          parentType: parentAccount.type,
-          childType: data.type,
-        });
-      }
-    }
+    // Parent account functionality has been removed for simplified hierarchy
 
     // Get the default book for this tenant
     const book = await prisma.book.findFirst({
@@ -300,11 +328,6 @@ export const createAccount = async (req: Request, res: Response) => {
         ...data,
         bookId: book.id,
         tenantId,
-      },
-      include: {
-        parent: {
-          select: { id: true, code: true, name: true, type: true }
-        },
       },
     });
 
@@ -357,48 +380,7 @@ export const updateAccount = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    // Validate parent account if being changed
-    if (data.parentId && data.parentId !== existingAccount.parentId) {
-      const parentAccount = await prisma.account.findFirst({
-        where: { id: data.parentId, tenantId },
-      });
-
-      if (!parentAccount) {
-        return res.status(400).json({
-          error: 'Parent account not found',
-        });
-      }
-
-      // Prevent circular references
-      if (data.parentId === id) {
-        return res.status(400).json({
-          error: 'Account cannot be its own parent',
-        });
-      }
-
-      // Check if setting this parent would create a circular reference
-      let checkParent = parentAccount;
-      while (checkParent.parentId) {
-        if (checkParent.parentId === id) {
-          return res.status(400).json({
-            error: 'Circular reference detected in account hierarchy',
-          });
-        }
-        const nextParent = await prisma.account.findFirst({
-          where: { id: checkParent.parentId, tenantId },
-        });
-        if (!nextParent) break;
-        checkParent = nextParent;
-      }
-
-      // Ensure type compatibility
-      const newType = data.type || existingAccount.type;
-      if (parentAccount.type !== newType) {
-        return res.status(400).json({
-          error: 'Parent and child accounts must be of the same type',
-        });
-      }
-    }
+    // Parent account functionality has been removed for simplified hierarchy
 
     // Don't allow type changes if account has entries (ALE compliance)
     if (data.type && data.type !== existingAccount.type && existingAccount._count.entries > 0) {

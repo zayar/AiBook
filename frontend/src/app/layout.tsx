@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
 import Navigation from '@/components/Navigation'
+import { CurrencyProvider } from '@/contexts/CurrencyContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -38,12 +39,14 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} h-full bg-gray-50 antialiased`}>
-        <div className="min-h-full flex">
-          <Navigation />
-          <div className="flex-1 lg:ml-64">
-            {children}
+        <CurrencyProvider>
+          <div className="min-h-full flex">
+            <Navigation />
+            <div className="flex-1 lg:ml-64">
+              {children}
+            </div>
           </div>
-        </div>
+        </CurrencyProvider>
         <Toaster 
           position="top-right"
           toastOptions={{

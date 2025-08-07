@@ -26,10 +26,13 @@ import expenseRoutes from './expenseRoutes';
 import reportsRoutes from './reportsRoutes';
 import aiCopilotRoutes from './aiCopilotRoutes';
 import advancedAIRoutes from './advancedAIRoutes';
+import enhancedAIRoutes from './enhancedAIRoutes';
+import conversationalAIRoutes from './conversationalAIRoutes';
 import { cogsRoutes } from './cogsRoutes';
 import bankReconciliationRoutes from './bankReconciliationRoutes';
 import auditTrailRoutes from './auditTrailRoutes';
 import organizationProfileRoutes from './organizationProfileRoutes';
+import costLayerRoutes from './costLayerRoutes';
 
 const router = Router();
 
@@ -215,6 +218,10 @@ router.use('/ai', aiRoutes);
 router.use('/ai/copilot', aiCopilotRoutes);
 router.use('/ai/advanced', advancedAIRoutes);
 
+// Enhanced AI routes (Phase 1 implementation)
+router.use('/ai/enhanced', enhancedAIRoutes);
+router.use('/ai/conversation', conversationalAIRoutes);
+
 // Business operation routes
 router.use('/customers', customerRoutes);
 router.use('/vendors', vendorRoutes);
@@ -256,14 +263,17 @@ router.use('/items', itemRoutes);
 // Cost of Goods Sold (COGS) management routes
 router.use('/cogs', cogsRoutes);
 
+// Cost Layer management routes (dedicated API for FIFO costing)
+router.use('/cost-layers', costLayerRoutes);
+
 // Tax management routes
 router.use('/taxes', taxRoutes);
 
-// Financial reporting routes
-router.use('/reports', reportingRoutes);
+// Financial reporting routes (fiscal year aware) - temporarily disabled
+// router.use('/reports', reportingRoutes);
 
-// Enhanced financial reports module
-router.use('/reports-new', reportsRoutes);
+// Standard financial reports (trial balance, P&L, etc.)
+router.use('/reports', reportsRoutes);
 
 // Transaction and accounting routes
 router.use('/transactions', transactionRoutes);

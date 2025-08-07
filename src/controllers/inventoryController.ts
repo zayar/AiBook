@@ -54,10 +54,10 @@ export class InventoryController {
       // Get default asset and COGS accounts for this tenant
       const [assetAccount, cogsAccount] = await Promise.all([
         prisma.account.findFirst({
-          where: { tenantId, type: 'ASSET', name: { contains: 'Inventory' } }
+          where: { tenantId, type: 'STOCK', name: { contains: 'Inventory' } }
         }),
         prisma.account.findFirst({
-          where: { tenantId, type: 'EXPENSE', name: { contains: 'Cost of Goods Sold' } }
+          where: { tenantId, type: 'COST_OF_GOODS_SOLD', name: { contains: 'Cost of Goods Sold' } }
         })
       ]);
 

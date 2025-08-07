@@ -1,4 +1,4 @@
-import { PrismaClient, AccountType, EntryType } from '@prisma/client';
+ import { PrismaClient, AccountType, EntryType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -52,27 +52,27 @@ export async function seedDatabase() {
     // Create chart of accounts
     const accounts = [
       // Assets
-      { code: '1000', name: 'Cash', type: AccountType.ASSET, isActive: true, description: 'Cash and cash equivalents' },
-      { code: '1100', name: 'Accounts Receivable', type: AccountType.ASSET, isActive: true, description: 'Money owed by customers' },
-      { code: '1200', name: 'Inventory', type: AccountType.ASSET, isActive: true, description: 'Products for resale' },
-      { code: '1300', name: 'Equipment', type: AccountType.ASSET, isActive: true, description: 'Office equipment and furniture' },
+      { code: '1000', name: 'Cash', type: AccountType.CASH, isActive: true, description: 'Cash and cash equivalents' },
+      { code: '1100', name: 'Accounts Receivable', type: AccountType.ACCOUNTS_RECEIVABLE, isActive: true, description: 'Money owed by customers' },
+      { code: '1200', name: 'Inventory', type: AccountType.STOCK, isActive: true, description: 'Products for resale' },
+      { code: '1300', name: 'Equipment', type: AccountType.FIXED_ASSET, isActive: true, description: 'Office equipment and furniture' },
       
       // Liabilities
-      { code: '2000', name: 'Accounts Payable', type: AccountType.LIABILITY, isActive: true, description: 'Money owed to suppliers' },
-      { code: '2100', name: 'Accrued Expenses', type: AccountType.LIABILITY, isActive: true, description: 'Expenses incurred but not yet paid' },
-      { code: '2200', name: 'Short-term Loans', type: AccountType.LIABILITY, isActive: true, description: 'Loans due within one year' },
+      { code: '2000', name: 'Accounts Payable', type: AccountType.ACCOUNTS_PAYABLE, isActive: true, description: 'Money owed to suppliers' },
+      { code: '2100', name: 'Accrued Expenses', type: AccountType.OTHER_CURRENT_LIABILITY, isActive: true, description: 'Expenses incurred but not yet paid' },
+      { code: '2200', name: 'Short-term Loans', type: AccountType.OTHER_CURRENT_LIABILITY, isActive: true, description: 'Loans due within one year' },
       
       // Equity
       { code: '3000', name: 'Owner Equity', type: AccountType.EQUITY, isActive: true, description: 'Owner investment and retained earnings' },
       { code: '3100', name: 'Retained Earnings', type: AccountType.EQUITY, isActive: true, description: 'Accumulated profits' },
       
       // Revenue
-      { code: '4000', name: 'Sales Revenue', type: AccountType.REVENUE, isActive: true, description: 'Revenue from product sales' },
-      { code: '4100', name: 'Service Revenue', type: AccountType.REVENUE, isActive: true, description: 'Revenue from services' },
-      { code: '4200', name: 'Other Income', type: AccountType.REVENUE, isActive: true, description: 'Miscellaneous income' },
+      { code: '4000', name: 'Sales Revenue', type: AccountType.INCOME, isActive: true, description: 'Revenue from product sales' },
+      { code: '4100', name: 'Service Revenue', type: AccountType.INCOME, isActive: true, description: 'Revenue from services' },
+      { code: '4200', name: 'Other Income', type: AccountType.OTHER_INCOME, isActive: true, description: 'Miscellaneous income' },
       
       // Expenses
-      { code: '5000', name: 'Cost of Goods Sold', type: AccountType.EXPENSE, isActive: true, description: 'Direct costs of products sold' },
+      { code: '5000', name: 'Cost of Goods Sold', type: AccountType.COST_OF_GOODS_SOLD, isActive: true, description: 'Direct costs of products sold' },
       { code: '6000', name: 'Office Expenses', type: AccountType.EXPENSE, isActive: true, description: 'General office operating expenses' },
       { code: '6100', name: 'Marketing Expenses', type: AccountType.EXPENSE, isActive: true, description: 'Marketing and advertising costs' },
       { code: '6200', name: 'Travel Expenses', type: AccountType.EXPENSE, isActive: true, description: 'Business travel costs' },

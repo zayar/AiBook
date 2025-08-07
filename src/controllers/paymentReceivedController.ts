@@ -11,7 +11,8 @@ interface PaymentReceivedRequest {
   amount: number;
   paymentDate: string;
   paymentMode: 'CASH' | 'BANK_TRANSFER' | 'CHECK' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'MOBILE_PAYMENT' | 'ONLINE_TRANSFER' | 'OTHER';
-  depositType: 'CASH_IN_HAND' | 'BANK_DEPOSIT' | 'PETTY_CASH' | 'UNDEPOSITED_FUNDS';
+  depositType?: 'CASH_IN_HAND' | 'BANK_DEPOSIT' | 'PETTY_CASH' | 'UNDEPOSITED_FUNDS'; // Keep for backward compatibility
+  depositToAccountId?: string; // NEW: Chart of Accounts integration
   bankCharges?: number;
   referenceNumber?: string;
   taxDeducted?: boolean;
@@ -62,6 +63,9 @@ export class PaymentReceivedController {
           where,
           include: {
             customer: true,
+            depositToAccount: {
+              select: { id: true, code: true, name: true, type: true }
+            },
             invoicePayments: {
               include: {
                 invoice: true
@@ -178,7 +182,8 @@ export class PaymentReceivedController {
             amount: data.amount,
             paymentDate: new Date(data.paymentDate),
             paymentMode: data.paymentMode,
-            depositType: data.depositType,
+            depositType: data.depositType || 'CASH_IN_HAND', // Fallback for backward compatibility
+            depositToAccountId: data.depositToAccountId, // NEW: Chart of Accounts integration
             bankCharges: data.bankCharges || null,
             referenceNumber: data.referenceNumber,
             taxDeducted: data.taxDeducted || false,
@@ -792,6 +797,58 @@ export class PaymentReceivedController {
     } catch (error) {
       console.error('Error creating accounting entries:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 🏦 GET ELIGIBLE DEPOSIT ACCOUNTS
+   * Returns accounts that can be used for "Deposit To" in payments
+   */
+  static async getDepositAccounts(req: Request, res: Response) {
+    try {
+      const tenantId = req.headers['x-tenant-id'] as string;
+
+      // Get accounts that are suitable for deposits: CASH, BANK, OTHER_CURRENT_ASSET, etc.
+      const accounts = await prisma.account.findMany({
+        where: {
+          tenantId,
+          isActive: true,
+          type: {
+            in: [
+              'CASH',
+              'BANK', 
+              'OTHER_CURRENT_ASSET',
+              'OTHER_ASSET',
+              'PAYMENT_CLEARING_ACCOUNT'
+            ]
+          }
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          type: true,
+          currency: true,
+          balance: true,
+          description: true
+        },
+        orderBy: [
+          { type: 'asc' },
+          { code: 'asc' }
+        ]
+      });
+
+      res.json({
+        success: true,
+        accounts
+      });
+    } catch (error) {
+      console.error('Error fetching deposit accounts:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch deposit accounts',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 }

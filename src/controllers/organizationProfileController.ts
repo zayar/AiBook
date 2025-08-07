@@ -26,7 +26,14 @@ export class OrganizationProfileController {
    */
   static async getOrganizationProfile(req: Request, res: Response) {
     try {
+      console.log('🔍 Organization Profile Request:', {
+        headers: req.headers,
+        tenant: req.tenant,
+        user: req.user
+      });
+      
       const tenantId = req.headers['x-tenant-id'] as string;
+      console.log('📋 Tenant ID from header:', tenantId);
 
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
@@ -52,11 +59,14 @@ export class OrganizationProfileController {
       });
 
       if (!tenant) {
+        console.log('❌ Tenant not found for ID:', tenantId);
         return res.status(404).json({
           success: false,
           message: 'Organization not found'
         });
       }
+
+      console.log('✅ Tenant found:', tenant.name);
 
       // Check if base currency can be changed (has transactions)
       const hasTransactions = await prisma.entry.count({
@@ -70,12 +80,13 @@ export class OrganizationProfileController {
         data: {
           ...tenant,
           canChangeCurrency,
-          fiscalYearPeriod: `${tenant.fiscalYearStart} ${this.getMonthName(tenant.fiscalYearStart)} - ${tenant.fiscalYearEnd} ${this.getMonthName(tenant.fiscalYearEnd)}`,
-          fiscalYearPeriodDetail: `Period: ${tenant.fiscalYearStartDay} ${this.getMonthName(tenant.fiscalYearStart)} - ${this.getLastDayOfMonth(tenant.fiscalYearEnd)} ${this.getMonthName(tenant.fiscalYearEnd)}`
+          fiscalYearPeriod: `${tenant.fiscalYearStart} - ${tenant.fiscalYearEnd}`,
+          fiscalYearPeriodDetail: `Period: ${tenant.fiscalYearStartDay} - ${tenant.fiscalYearEnd}`
         }
       });
     } catch (error) {
-      console.error('Error fetching organization profile:', error);
+      console.error('❌ Error fetching organization profile:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       res.status(500).json({
         success: false,
         message: 'Failed to fetch organization profile',
@@ -184,8 +195,8 @@ export class OrganizationProfileController {
         message: 'Organization profile updated successfully',
         data: {
           ...updatedTenant,
-          fiscalYearPeriod: `${updatedTenant.fiscalYearStart} ${this.getMonthName(updatedTenant.fiscalYearStart)} - ${updatedTenant.fiscalYearEnd} ${this.getMonthName(updatedTenant.fiscalYearEnd)}`,
-          fiscalYearPeriodDetail: `Period: ${updatedTenant.fiscalYearStartDay} ${this.getMonthName(updatedTenant.fiscalYearStart)} - ${this.getLastDayOfMonth(updatedTenant.fiscalYearEnd)} ${this.getMonthName(updatedTenant.fiscalYearEnd)}`
+          fiscalYearPeriod: `${updatedTenant.fiscalYearStart} - ${updatedTenant.fiscalYearEnd}`,
+          fiscalYearPeriodDetail: `Period: ${updatedTenant.fiscalYearStartDay} - ${updatedTenant.fiscalYearEnd}`
         }
       });
     } catch (error) {

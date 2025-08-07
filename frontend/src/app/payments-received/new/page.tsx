@@ -17,7 +17,6 @@ import {
   Calculator
 } from 'lucide-react';
 import { paymentReceivedAPI, UnpaidInvoice } from '@/lib/payment-received-api';
-import { PaymentAPI, PaymentMethod } from '@/lib/payment-api';
 import { useRouter } from 'next/navigation';
 import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
 import Link from 'next/link';
@@ -43,7 +42,9 @@ export default function NewPaymentReceivedPage() {
   const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
   const [invoiceAllocations, setInvoiceAllocations] = useState<InvoiceAllocation[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
-  const [bankAccounts, setBankAccounts] = useState<PaymentMethod[]>([]);
+  const [depositAccounts, setDepositAccounts] = useState<any[]>([]); // Chart of Accounts for deposit selection
+  const [isDepositDropdownOpen, setIsDepositDropdownOpen] = useState(false);
+  const [depositSearchTerm, setDepositSearchTerm] = useState('');
 
   const [formData, setFormData] = useState({
     customerId: '',
@@ -51,7 +52,8 @@ export default function NewPaymentReceivedPage() {
     amount: '',
     paymentDate: new Date().toISOString().split('T')[0],
     paymentMode: 'CASH',
-    depositType: '',
+    depositType: '', // Keep for backward compatibility
+    depositToAccountId: '', // NEW: Chart of Accounts integration
     bankCharges: '',
     referenceNumber: '',
     taxDeducted: false,
@@ -63,8 +65,27 @@ export default function NewPaymentReceivedPage() {
 
   useEffect(() => {
     fetchCustomers();
-    fetchBankAccounts();
+    fetchDepositAccounts(); // Fetch Chart of Accounts for deposit selection
   }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.deposit-dropdown')) {
+        setIsDepositDropdownOpen(false);
+        setDepositSearchTerm('');
+      }
+    };
+
+    if (isDepositDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDepositDropdownOpen]);
 
   useEffect(() => {
     if (formData.customerId) {
@@ -84,20 +105,22 @@ export default function NewPaymentReceivedPage() {
     }
   };
 
-  const fetchBankAccounts = async () => {
+
+
+  const fetchDepositAccounts = async () => {
     try {
-      const response = await PaymentAPI.getPaymentMethods(true);
-      setBankAccounts(response.paymentMethods || []);
+      const response = await paymentReceivedAPI.getDepositAccounts();
+      setDepositAccounts(response.accounts || []);
       
-      // Set default bank account as default depositType if available
-      const defaultAccount = response.paymentMethods.find(acc => acc.isDefault);
-      if (defaultAccount && !formData.depositType) {
-        setFormData(prev => ({ ...prev, depositType: defaultAccount.id }));
-      } else if (response.paymentMethods.length > 0 && !formData.depositType) {
-        setFormData(prev => ({ ...prev, depositType: response.paymentMethods[0].id }));
+      // Set default deposit account if available
+      const defaultAccount = response.accounts.find(acc => acc.type === 'CASH');
+      if (defaultAccount && !formData.depositToAccountId) {
+        setFormData(prev => ({ ...prev, depositToAccountId: defaultAccount.id }));
+      } else if (response.accounts.length > 0 && !formData.depositToAccountId) {
+        setFormData(prev => ({ ...prev, depositToAccountId: response.accounts[0].id }));
       }
     } catch (error) {
-      console.error('Error fetching bank accounts:', error);
+      console.error('Error fetching deposit accounts:', error);
     }
   };
 
@@ -194,7 +217,8 @@ export default function NewPaymentReceivedPage() {
         amount: parseFloat(formData.amount),
         paymentDate: formData.paymentDate,
         paymentMode: formData.paymentMode,
-        depositType: formData.depositType,
+        depositType: formData.depositType || undefined, // Keep for backward compatibility
+        depositToAccountId: formData.depositToAccountId || undefined, // NEW: Chart of Accounts integration
         bankCharges: formData.bankCharges ? parseFloat(formData.bankCharges) : undefined,
         referenceNumber: formData.referenceNumber || undefined,
         taxDeducted: formData.taxDeducted,
@@ -226,6 +250,25 @@ export default function NewPaymentReceivedPage() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(numericAmount || 0);
+  };
+
+  // Helper functions for custom dropdown
+  const getSelectedDepositAccount = () => {
+    return depositAccounts.find(acc => acc.id === formData.depositToAccountId);
+  };
+
+  const getFilteredDepositAccounts = () => {
+    if (!depositSearchTerm) return depositAccounts;
+    return depositAccounts.filter(acc => 
+      acc.name.toLowerCase().includes(depositSearchTerm.toLowerCase()) ||
+      acc.code.toLowerCase().includes(depositSearchTerm.toLowerCase())
+    );
+  };
+
+  const handleDepositAccountSelect = (accountId: string) => {
+    setFormData(prev => ({ ...prev, depositToAccountId: accountId }));
+    setIsDepositDropdownOpen(false);
+    setDepositSearchTerm('');
   };
 
   if (loading) {
@@ -407,28 +450,151 @@ export default function NewPaymentReceivedPage() {
                 </select>
               </div>
 
-              <div>
+              <div className="relative deposit-dropdown">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Deposit To *
                 </label>
-                <select
-                  name="depositType"
-                  value={formData.depositType}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                >
-                  <option value="">Select deposit account...</option>
-                  {bankAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name} {account.bankName && `(${account.bankName})`} 
-                      {account.accountNumber && ` - •••${account.accountNumber.slice(-4)}`}
-                    </option>
-                  ))}
-                </select>
-                {bankAccounts.length === 0 && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsDepositDropdownOpen(!isDepositDropdownOpen)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-left flex items-center justify-between"
+                  >
+                    <span className={formData.depositToAccountId ? 'text-gray-900' : 'text-gray-500'}>
+                      {formData.depositToAccountId 
+                        ? `${getSelectedDepositAccount()?.code} - ${getSelectedDepositAccount()?.name}`
+                        : 'Select deposit account...'
+                      }
+                    </span>
+                    <svg className={`w-5 h-5 text-gray-400 transition-transform ${isDepositDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {isDepositDropdownOpen && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-80 overflow-hidden">
+                      {/* Search Input */}
+                      <div className="p-3 border-b border-gray-200">
+                        <input
+                          type="text"
+                          placeholder="Search accounts..."
+                          value={depositSearchTerm}
+                          onChange={(e) => setDepositSearchTerm(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          autoFocus
+                        />
+                      </div>
+                      
+                      {/* Scrollable Options */}
+                      <div className="max-h-60 overflow-y-auto">
+                        {getFilteredDepositAccounts().length === 0 ? (
+                          <div className="px-4 py-3 text-gray-500 text-sm">No accounts found</div>
+                        ) : (
+                          <>
+                            {/* Cash Accounts */}
+                            {getFilteredDepositAccounts().filter(acc => acc.type === 'CASH').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  💰 Cash
+                                </div>
+                                {getFilteredDepositAccounts().filter(acc => acc.type === 'CASH').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handleDepositAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.depositToAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Bank Accounts */}
+                            {getFilteredDepositAccounts().filter(acc => acc.type === 'BANK').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  🏦 Bank
+                                </div>
+                                {getFilteredDepositAccounts().filter(acc => acc.type === 'BANK').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handleDepositAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.depositToAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Other Current Assets */}
+                            {getFilteredDepositAccounts().filter(acc => acc.type === 'OTHER_CURRENT_ASSET').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  📁 Other Current Assets
+                                </div>
+                                {getFilteredDepositAccounts().filter(acc => acc.type === 'OTHER_CURRENT_ASSET').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handleDepositAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.depositToAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Other Assets */}
+                            {getFilteredDepositAccounts().filter(acc => !['CASH', 'BANK', 'OTHER_CURRENT_ASSET'].includes(acc.type)).length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  📂 Other Assets
+                                </div>
+                                {getFilteredDepositAccounts().filter(acc => !['CASH', 'BANK', 'OTHER_CURRENT_ASSET'].includes(acc.type)).map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handleDepositAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.depositToAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {depositAccounts.length === 0 && (
                   <p className="mt-1 text-xs text-red-500">
-                    No bank accounts found. Please add bank accounts (including Cash in Hand, Petty Cash, etc.) in the Banking section first.
+                    No deposit accounts found. Please add accounts in the Chart of Accounts section first.
                   </p>
                 )}
               </div>

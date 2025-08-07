@@ -15,6 +15,26 @@ export class AccountingFormatter {
    */
 
   /**
+   * Format amount as currency using organization settings
+   */
+  static async formatCurrencyWithOrgSettings(
+    amount: number,
+    tenantId: string,
+    options: Partial<Intl.NumberFormatOptions> = {}
+  ): Promise<string> {
+    try {
+      const { FiscalYearService } = await import('../../services/FiscalYearService');
+      const fiscalService = new FiscalYearService(tenantId);
+      const settings = await fiscalService.getFiscalYearSettings();
+      
+      return this.formatCurrency(amount, settings.baseCurrency, 'en-US', options);
+    } catch (error) {
+      // Fallback to USD if org settings unavailable
+      return this.formatCurrency(amount, 'USD', 'en-US', options);
+    }
+  }
+
+  /**
    * Format amount as currency
    */
   static formatCurrency(

@@ -139,6 +139,17 @@ export const enhancedTenantMiddleware = async (
       console.log('Creating development tenant fallback for tenant:', tenantId);
     }
 
+    // Skip tenant validation in development mode for now
+    if (!tenant && process.env.NODE_ENV === 'development') {
+      tenant = {
+        id: tenantId,
+        name: 'Development Tenant',
+        domain: 'localhost',
+        settings: {}
+      };
+      console.log('Skipping tenant validation for development tenant:', tenantId);
+    }
+
     if (!tenant) {
       throw new AppError('Invalid tenant', 404);
     }

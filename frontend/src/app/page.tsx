@@ -1,7 +1,7 @@
 'use client'
 
-import AIDashboard from '@/components/AIDashboard'
+import ModernCleanDashboard from '@/components/ModernCleanDashboard'
 
 export default function Home() {
-  return <AIDashboard />
+  return <ModernCleanDashboard />
 }

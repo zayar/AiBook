@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 import { ChartOfAccountsEngine, AccountBalance } from './ChartOfAccountsEngine';
 import { AccountType } from '@prisma/client';
+import { FiscalYearService, FiscalPeriod } from '../../services/FiscalYearService';
 
 export interface FinancialStatement {
   statement: 'BALANCE_SHEET' | 'INCOME_STATEMENT' | 'CASH_FLOW' | 'TRIAL_BALANCE';
@@ -64,10 +65,12 @@ export interface IncomeStatementData {
 export class ReportingEngine {
   private tenantId: string;
   private chartEngine: ChartOfAccountsEngine;
+  private fiscalYearService: FiscalYearService;
 
   constructor(tenantId: string) {
     this.tenantId = tenantId;
     this.chartEngine = new ChartOfAccountsEngine(tenantId);
+    this.fiscalYearService = new FiscalYearService(tenantId);
   }
 
   /**
@@ -77,9 +80,9 @@ export class ReportingEngine {
   async generateBalanceSheet(asOfDate: Date = new Date()): Promise<FinancialStatement> {
     const accounts = await this.getAccountBalancesAsOf(asOfDate);
     
-    const assets = accounts.filter(acc => acc.type === 'ASSET');
-    const liabilities = accounts.filter(acc => acc.type === 'LIABILITY');
-    const equity = accounts.filter(acc => acc.type === 'EQUITY');
+    const assets = accounts.filter(acc => this.getAccountCategory(acc.type) === 'ASSET');
+    const liabilities = accounts.filter(acc => this.getAccountCategory(acc.type) === 'LIABILITY');
+    const equity = accounts.filter(acc => this.getAccountCategory(acc.type) === 'EQUITY');
 
     // Classify current vs non-current assets/liabilities
     const currentAssets = assets.filter(acc => this.isCurrentAccount(acc.accountCode));
@@ -132,8 +135,8 @@ export class ReportingEngine {
   ): Promise<FinancialStatement> {
     const accounts = await this.getAccountBalancesForPeriod(startDate, endDate);
     
-    const revenue = accounts.filter(acc => acc.type === 'REVENUE');
-    const expenses = accounts.filter(acc => acc.type === 'EXPENSE');
+    const revenue = accounts.filter(acc => this.getAccountCategory(acc.type) === 'INCOME');
+    const expenses = accounts.filter(acc => this.getAccountCategory(acc.type) === 'EXPENSE');
 
     // Separate COGS from operating expenses
     const costOfGoodsSold = expenses.filter(acc => acc.accountCode.startsWith('5'));
@@ -421,5 +424,226 @@ export class ReportingEngine {
   private calculateRatio(numerator: number, denominator: number): number {
     if (denominator === 0) return 0;
     return Number((numerator / denominator).toFixed(4));
+  }
+
+  /**
+   * 📅 GENERATE FISCAL YEAR INCOME STATEMENT
+   * Income statement for the current or specified fiscal year
+   */
+  async generateFiscalYearIncomeStatement(fiscalYear?: number): Promise<FinancialStatement> {
+    const targetFiscalYear = fiscalYear || await this.fiscalYearService.getFiscalYearForDate(new Date());
+    const fiscalPeriod = await this.fiscalYearService.getFiscalYearPeriod(targetFiscalYear);
+    
+    return this.generateIncomeStatement(fiscalPeriod.startDate, fiscalPeriod.endDate);
+  }
+
+  /**
+   * 📊 GENERATE QUARTERLY INCOME STATEMENT
+   * Income statement for a specific fiscal quarter
+   */
+  async generateQuarterlyIncomeStatement(fiscalYear: number, quarter: number): Promise<FinancialStatement> {
+    const quarters = await this.fiscalYearService.getFiscalQuarters(fiscalYear);
+    const targetQuarter = quarters.find(q => q.quarter === quarter);
+    
+    if (!targetQuarter) {
+      throw new Error(`Invalid quarter ${quarter} for fiscal year ${fiscalYear}`);
+    }
+    
+    return this.generateIncomeStatement(targetQuarter.startDate, targetQuarter.endDate);
+  }
+
+  /**
+   * 📈 GENERATE MONTHLY INCOME STATEMENT
+   * Income statement for a specific fiscal month
+   */
+  async generateMonthlyIncomeStatement(fiscalYear: number, month: number): Promise<FinancialStatement> {
+    const months = await this.fiscalYearService.getFiscalMonths(fiscalYear);
+    const targetMonth = months.find(m => m.month === month);
+    
+    if (!targetMonth) {
+      throw new Error(`Invalid month ${month} for fiscal year ${fiscalYear}`);
+    }
+    
+    return this.generateIncomeStatement(targetMonth.startDate, targetMonth.endDate);
+  }
+
+  /**
+   * 🔄 GENERATE COMPARATIVE INCOME STATEMENT
+   * Compare current period with prior period using fiscal calendar
+   */
+  async generateComparativeIncomeStatement(
+    startDate: Date,
+    endDate: Date,
+    periodType: 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'CUSTOM' = 'CUSTOM'
+  ): Promise<{
+    current: FinancialStatement;
+    prior: FinancialStatement;
+    variance: {
+      revenue: { amount: number; percentage: number };
+      expenses: { amount: number; percentage: number };
+      netIncome: { amount: number; percentage: number };
+    };
+  }> {
+    const currentPeriod = await this.fiscalYearService.createReportingPeriod(startDate, endDate, periodType);
+    const priorPeriod = await this.fiscalYearService.getPriorPeriod(currentPeriod);
+    
+    const currentStatement = await this.generateIncomeStatement(currentPeriod.startDate, currentPeriod.endDate);
+    const priorStatement = await this.generateIncomeStatement(priorPeriod.startDate, priorPeriod.endDate);
+    
+    // Calculate variances
+    const currentData = currentStatement.data as IncomeStatementData;
+    const priorData = priorStatement.data as IncomeStatementData;
+    
+    const variance = {
+      revenue: this.calculateVariance(currentData.revenue.total, priorData.revenue.total),
+      expenses: this.calculateVariance(currentData.operatingExpenses.total, priorData.operatingExpenses.total),
+      netIncome: this.calculateVariance(currentData.netIncome, priorData.netIncome)
+    };
+    
+    return {
+      current: currentStatement,
+      prior: priorStatement,
+      variance
+    };
+  }
+
+  /**
+   * 📊 GET FISCAL YEAR SUMMARY
+   * High-level financial summary for the fiscal year
+   */
+  async getFiscalYearSummary(fiscalYear?: number): Promise<{
+    fiscalYear: number;
+    period: FiscalPeriod;
+    summary: {
+      totalRevenue: number;
+      totalExpenses: number;
+      grossProfit: number;
+      netIncome: number;
+      totalAssets: number;
+      totalLiabilities: number;
+      equity: number;
+    };
+  }> {
+    const targetFiscalYear = fiscalYear || await this.fiscalYearService.getFiscalYearForDate(new Date());
+    const fiscalPeriod = await this.fiscalYearService.getFiscalYearPeriod(targetFiscalYear);
+    
+    const incomeStatement = await this.generateIncomeStatement(fiscalPeriod.startDate, fiscalPeriod.endDate);
+    const balanceSheet = await this.generateBalanceSheet(fiscalPeriod.endDate);
+    
+    const incomeData = incomeStatement.data as IncomeStatementData;
+    const balanceData = balanceSheet.data as BalanceSheetData;
+    
+    return {
+      fiscalYear: targetFiscalYear,
+      period: fiscalPeriod,
+      summary: {
+        totalRevenue: incomeData.revenue.total,
+        totalExpenses: incomeData.operatingExpenses.total + incomeData.costOfGoodsSold.total,
+        grossProfit: incomeData.grossProfit,
+        netIncome: incomeData.netIncome,
+        totalAssets: balanceData.assets.total,
+        totalLiabilities: balanceData.liabilities.total,
+        equity: balanceData.equity.total
+      }
+    };
+  }
+
+  /**
+   * 🎯 VALIDATE REPORTING PERIOD
+   * Validates that the reporting period aligns with fiscal calendar
+   */
+  async validateReportingPeriod(startDate: Date, endDate: Date): Promise<{
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+    suggestedPeriod?: FiscalPeriod;
+  }> {
+    const validation = await this.fiscalYearService.validateFiscalPeriod(startDate, endDate);
+    
+    // Suggest fiscal-aligned period if dates don't align
+    let suggestedPeriod: FiscalPeriod | undefined;
+    
+    const startFiscalYear = await this.fiscalYearService.getFiscalYearForDate(startDate);
+    const endFiscalYear = await this.fiscalYearService.getFiscalYearForDate(endDate);
+    
+    if (startFiscalYear === endFiscalYear) {
+      // Check if this aligns with a standard fiscal period
+      const fiscalYear = await this.fiscalYearService.getFiscalYearPeriod(startFiscalYear);
+      const quarters = await this.fiscalYearService.getFiscalQuarters(startFiscalYear);
+      const months = await this.fiscalYearService.getFiscalMonths(startFiscalYear);
+      
+      // Check if it matches a quarter
+      const matchingQuarter = quarters.find(q => 
+        Math.abs(q.startDate.getTime() - startDate.getTime()) < 24 * 60 * 60 * 1000 &&
+        Math.abs(q.endDate.getTime() - endDate.getTime()) < 24 * 60 * 60 * 1000
+      );
+      
+      if (matchingQuarter) {
+        suggestedPeriod = {
+          fiscalYear: startFiscalYear,
+          startDate: matchingQuarter.startDate,
+          endDate: matchingQuarter.endDate,
+          quarter: matchingQuarter.quarter,
+          periodType: 'QUARTERLY'
+        };
+      }
+      
+      // Check if it matches a month
+      if (!suggestedPeriod) {
+        const matchingMonth = months.find(m => 
+          Math.abs(m.startDate.getTime() - startDate.getTime()) < 24 * 60 * 60 * 1000 &&
+          Math.abs(m.endDate.getTime() - endDate.getTime()) < 24 * 60 * 60 * 1000
+        );
+        
+        if (matchingMonth) {
+          suggestedPeriod = {
+            fiscalYear: startFiscalYear,
+            startDate: matchingMonth.startDate,
+            endDate: matchingMonth.endDate,
+            month: matchingMonth.month,
+            periodType: 'MONTHLY'
+          };
+        }
+      }
+    }
+    
+    return {
+      ...validation,
+      suggestedPeriod
+    };
+  }
+
+  /**
+   * 🧮 CALCULATE VARIANCE
+   * Helper method to calculate variance between periods
+   */
+  private calculateVariance(current: number, prior: number): { amount: number; percentage: number } {
+    const amount = current - prior;
+    const percentage = prior !== 0 ? (amount / prior) * 100 : 0;
+    
+    return {
+      amount: Number(amount.toFixed(2)),
+      percentage: Number(percentage.toFixed(2))
+    };
+  }
+
+  /**
+   * 🏷️ GET ACCOUNT CATEGORY
+   * Helper method to map account sub-types to main categories
+   */
+  private getAccountCategory(type: string): string {
+    const assetTypes = ['OTHER_ASSET', 'OTHER_CURRENT_ASSET', 'CASH', 'BANK', 'FIXED_ASSET', 'ACCOUNTS_RECEIVABLE', 'STOCK', 'PAYMENT_CLEARING_ACCOUNT', 'INPUT_TAX', 'INTANGIBLE_ASSET', 'NON_CURRENT_ASSET', 'DEFERRED_TAX_ASSET'];
+    const liabilityTypes = ['OTHER_CURRENT_LIABILITY', 'CREDIT_CARD', 'NON_CURRENT_LIABILITY', 'OTHER_LIABILITY', 'ACCOUNTS_PAYABLE', 'OVERSEAS_TAX_PAYABLE', 'OUTPUT_TAX', 'DEFERRED_TAX_LIABILITY'];
+    const equityTypes = ['EQUITY'];
+    const incomeTypes = ['INCOME', 'OTHER_INCOME'];
+    const expenseTypes = ['EXPENSE', 'COST_OF_GOODS_SOLD', 'OTHER_EXPENSE'];
+
+    if (assetTypes.includes(type)) return 'ASSET';
+    if (liabilityTypes.includes(type)) return 'LIABILITY';
+    if (equityTypes.includes(type)) return 'EQUITY';
+    if (incomeTypes.includes(type)) return 'INCOME';
+    if (expenseTypes.includes(type)) return 'EXPENSE';
+    
+    return type; // fallback
   }
 } 

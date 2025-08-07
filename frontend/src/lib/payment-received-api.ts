@@ -11,7 +11,14 @@ export interface PaymentReceived {
   currency: string;
   paymentDate: string;
   paymentMode: 'CASH' | 'BANK_TRANSFER' | 'CHECK' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'MOBILE_PAYMENT' | 'ONLINE_TRANSFER' | 'OTHER';
-  depositType: 'CASH_IN_HAND' | 'BANK_DEPOSIT' | 'PETTY_CASH' | 'UNDEPOSITED_FUNDS';
+  depositType?: 'CASH_IN_HAND' | 'BANK_DEPOSIT' | 'PETTY_CASH' | 'UNDEPOSITED_FUNDS'; // Keep for backward compatibility
+  depositToAccountId?: string; // NEW: Chart of Accounts integration
+  depositToAccount?: {
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+  };
   bankCharges?: number;
   referenceNumber?: string;
   taxDeducted: boolean;
@@ -63,7 +70,8 @@ export interface PaymentReceivedCreateRequest {
   amount: number;
   paymentDate: string;
   paymentMode: string;
-  depositType: string;
+  depositType?: string; // Keep for backward compatibility
+  depositToAccountId?: string; // NEW: Chart of Accounts integration
   bankCharges?: number;
   referenceNumber?: string;
   taxDeducted: boolean;
@@ -206,6 +214,18 @@ class PaymentReceivedAPI {
 
     if (!response.ok) {
       throw new Error(`Failed to fetch customers: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async getDepositAccounts(): Promise<{ success: boolean; accounts: any[] }> {
+    const response = await fetch(`${API_BASE_URL}/payments-received/deposit-accounts`, {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch deposit accounts: ${response.statusText}`);
     }
 
     return response.json();

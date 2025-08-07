@@ -458,9 +458,15 @@ export const approveExpense = async (req: Request, res: Response) => {
       }
 
       // 3. Credit: Paid Through Account (decreases cash/bank/credit card)
+      // Handle both legacy paidThroughId and new paidThroughAccountId
+      const paidThroughAccountId = expense.paidThroughAccountId || expense.paidThroughId;
+      if (!paidThroughAccountId) {
+        throw new Error('Either paidThroughId or paidThroughAccountId must be provided');
+      }
+
       await tx.entry.create({
         data: {
-          accountId: expense.paidThroughId,
+          accountId: paidThroughAccountId,
           bookId: book.id,
           tenantId,
           amount: expense.totalAmount,

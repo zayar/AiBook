@@ -38,6 +38,9 @@ model Tenant {
   cogsCalculations      COGSCalculation[]
   cogsLayerConsumptions COGSLayerConsumption[]
   conversationHistory   ConversationHistory[]
+  conversationSessions  ConversationSession[]
+  userPreferences       UserPreference[]
+  reportTemplates       ReportTemplate[]
   customers             Customer[]
   entries               Entry[]
   expenses              Expense[]
@@ -59,6 +62,10 @@ model Tenant {
   auditLogs             AuditLog[]
   bankStatements        BankStatement[]
   transactionMatches    TransactionMatch[]
+  businessContexts      BusinessContext[]
+  aiModelPerformances   AIModelPerformance[]
+  businessInsights      BusinessInsight[]
+  financialKPIs         FinancialKPI[]
 
   @@map("tenants")
 }
@@ -103,6 +110,9 @@ model Account {
   inventoryAssets  InventoryItem[]   @relation("InventoryAsset")
   inventoryCOGS    InventoryItem[]   @relation("InventoryCOGS")
   taxRates         TaxRate[]
+  paymentsReceivedDeposits PaymentReceived[] @relation("PaymentReceivedDepositAccount")
+  vendorPaymentsPaidThrough VendorPayment[] @relation("VendorPaymentPaidThroughAccount")
+  expensesPaidThrough Expense[] @relation("ExpensePaidThroughAccount")
 
   @@unique([tenantId, code])
   @@unique([tenantId, bookId, code])
@@ -130,23 +140,42 @@ model Entry {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   paymentReceivedId    String?
-  aiInsights           Json?
-  aiTags               Json?
-  confidence           Float?
-  embedding            Bytes?
+  
+  // Enhanced AI Fields
+  aiInsights           Json?                 // Structured insights object
+  aiTags               Json?                 // Dynamic tagging system
+  confidence           Float?                // AI confidence score
+  embedding            Bytes?                // Vector embedding for similarity search
+  
+  // New AI-Enhanced Fields
+  businessContextId    String?               // Rich business metadata
+  predictiveFactors    Json?                 // Factors affecting predictions
+  semanticCategories   Json?                 // Multi-level categorization
+  relationshipGraph    Json?                 // Connected entity relationships
+  impactScore          Float?                // Business impact ranking
+  riskScore            Float?                // Risk assessment score
+  seasonalityFactors   Json?                 // Seasonal pattern data
+  userBehaviorContext  Json?                 // User interaction patterns
+  automationLevel      AutomationLevel       @default(MANUAL)
+  learningFeedback     Json?                 // User feedback for ML improvement
   bankTransactions     BankTransaction[]
   account              Account               @relation(fields: [accountId], references: [id])
   book                 Book                  @relation(fields: [bookId], references: [id], onDelete: Cascade)
   paymentReceived      PaymentReceived?      @relation("PaymentReceivedJournalEntries", fields: [paymentReceivedId], references: [id])
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   inventoryAdjustments InventoryAdjustment[]
+  businessContext      BusinessContext?      @relation(fields: [businessContextId], references: [id])
 
   @@index([tenantId, journalId])
   @@index([tenantId, accountId])
   @@index([tenantId, postedAt])
+  @@index([tenantId, automationLevel])
+  @@index([tenantId, impactScore])
+  @@index([tenantId, riskScore])
   @@index([accountId], map: "entries_accountId_fkey")
   @@index([bookId], map: "entries_bookId_fkey")
   @@index([paymentReceivedId], map: "entries_paymentReceivedId_fkey")
+  @@index([businessContextId], map: "entries_businessContextId_fkey")
   @@map("entries")
 }
 
@@ -633,7 +662,8 @@ model Expense {
   journalId        String?
   notes            String?
   paidAt           DateTime?
-  paidThroughId    String
+  paidThroughId    String?       // Keep for backward compatibility
+  paidThroughAccountId String?   // NEW: Link to Chart of Accounts
   receiptFiles     Json?
   reference        String?
   taxAmount        Decimal       @default(0.00) @db.Decimal(15, 2)
@@ -642,7 +672,8 @@ model Expense {
   vendorId         String?
   customer         Customer?     @relation(fields: [customerId], references: [id])
   expenseAccount   Account       @relation("ExpenseAccount", fields: [expenseAccountId], references: [id])
-  paidThrough      PaymentMethod @relation("PaidThroughPaymentMethod", fields: [paidThroughId], references: [id])
+  paidThrough      PaymentMethod? @relation("PaidThroughPaymentMethod", fields: [paidThroughId], references: [id])
+  paidThroughAccount Account?    @relation("ExpensePaidThroughAccount", fields: [paidThroughAccountId], references: [id])
   taxRate          TaxRate?      @relation(fields: [taxRateId], references: [id])
   tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor           Vendor?       @relation(fields: [vendorId], references: [id])
@@ -655,6 +686,7 @@ model Expense {
   @@index([taxRateId], map: "expenses_taxRateId_fkey")
   @@index([expenseAccountId], map: "expenses_expenseAccountId_fkey")
   @@index([paidThroughId], map: "expenses_paidThroughId_fkey")
+  @@index([paidThroughAccountId], map: "expenses_paidThroughAccountId_fkey")
   @@map("expenses")
 }
 
@@ -1038,7 +1070,8 @@ model PaymentReceived {
   exchangeRate      Decimal               @default(1.000000) @db.Decimal(10, 6)
   paymentDate       DateTime              @default(now())
   paymentMode       PaymentReceivedMode   @default(CASH)
-  depositType       String                @default("CASH_IN_HAND")
+  depositType       String?               @default("CASH_IN_HAND") // Keep for backward compatibility
+  depositToAccountId String?              // NEW: Link to Chart of Accounts
   bankCharges       Decimal?              @db.Decimal(15, 2)
   referenceNumber   String?
   taxDeducted       Boolean               @default(false)
@@ -1060,6 +1093,7 @@ model PaymentReceived {
   journalEntries    Entry[]               @relation("PaymentReceivedJournalEntries")
   invoicePayments   InvoicePayment[]
   customer          Customer?             @relation(fields: [customerId], references: [id])
+  depositToAccount  Account?              @relation("PaymentReceivedDepositAccount", fields: [depositToAccountId], references: [id])
   tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, paymentNumber])
@@ -1068,6 +1102,7 @@ model PaymentReceived {
   @@index([tenantId, customerId])
   @@index([tenantId, paymentMode])
   @@index([customerId], map: "payments_received_customerId_fkey")
+  @@index([depositToAccountId], map: "payments_received_depositToAccountId_fkey")
   @@map("payments_received")
 }
 
@@ -1084,7 +1119,8 @@ model VendorPayment {
   exchangeRate    Decimal             @default(1.000000) @db.Decimal(10, 6)
   paymentDate     DateTime            @default(now())
   paymentMode     PaymentReceivedMode @default(CASH)
-  paidThroughId   String
+  paidThroughId   String?             // Keep for backward compatibility
+  paidThroughAccountId String?        // NEW: Link to Chart of Accounts
   referenceNumber String?
   taxDeducted     Boolean             @default(false)
   notes           String?             @db.Text
@@ -1097,7 +1133,8 @@ model VendorPayment {
   createdBy       String?
   updatedBy       String?
   billPayments    BillPayment[]       @relation("VendorPaymentBillPayments")
-  paidThrough     PaymentMethod       @relation("VendorPaymentPaidThrough", fields: [paidThroughId], references: [id])
+  paidThrough     PaymentMethod?      @relation("VendorPaymentPaidThrough", fields: [paidThroughId], references: [id])
+  paidThroughAccount Account?         @relation("VendorPaymentPaidThroughAccount", fields: [paidThroughAccountId], references: [id])
   tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendor          Vendor              @relation(fields: [vendorId], references: [id])
 
@@ -1106,6 +1143,7 @@ model VendorPayment {
   @@index([tenantId, paymentDate])
   @@index([tenantId, paymentMode])
   @@index([paidThroughId], map: "vendor_payments_paidThroughId_fkey")
+  @@index([paidThroughAccountId], map: "vendor_payments_paidThroughAccountId_fkey")
   @@index([vendorId], map: "vendor_payments_vendorId_fkey")
   @@map("vendor_payments")
 }
@@ -1189,6 +1227,84 @@ model ConversationHistory {
   @@map("conversation_history")
 }
 
+// Enhanced Phase 3 Conversation Models
+model ConversationSession {
+  id             String                @id @default(cuid())
+  sessionId      String                @unique
+  userId         String?
+  tenantId       String
+  status         ConversationStatus    @default(ACTIVE)
+  context        Json?                 // Current conversation context
+  preferences    Json?                 // User preferences learned
+  startedAt      DateTime              @default(now())
+  lastActiveAt   DateTime              @updatedAt
+  endedAt        DateTime?
+  totalMessages  Int                   @default(0)
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages       ConversationMessage[]
+  
+  @@index([tenantId, userId])
+  @@index([tenantId, status])
+  @@map("conversation_sessions")
+}
+
+model ConversationMessage {
+  id             String              @id @default(cuid())
+  sessionId      String
+  messageType    MessageType         @default(USER)
+  content        String              @db.Text
+  intent         String?
+  entities       Json?               // Extracted entities
+  confidence     Float?
+  executionTime  Int?
+  metadata       Json?               // Additional message metadata
+  createdAt      DateTime            @default(now())
+  session        ConversationSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  
+  @@index([sessionId, createdAt])
+  @@map("conversation_messages")
+}
+
+model UserPreference {
+  id                String           @id @default(cuid())
+  userId            String
+  tenantId          String
+  preferenceType    PreferenceType
+  key               String
+  value             Json
+  confidence        Float            @default(0.5)
+  learningSource    LearningSource   @default(CONVERSATION)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, tenantId, preferenceType, key])
+  @@index([tenantId, userId])
+  @@map("user_preferences")
+}
+
+model ReportTemplate {
+  id              String       @id @default(cuid())
+  name            String
+  description     String?
+  tenantId        String
+  userId          String?
+  templateType    ReportType
+  nlQuery         String       // Natural language query that generates this report
+  sqlQuery        String?      // Generated SQL query
+  parameters      Json?        // Report parameters
+  isPublic        Boolean      @default(false)
+  usageCount      Int          @default(0)
+  avgExecutionTime Float?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId, templateType])
+  @@index([tenantId, isPublic])
+  @@map("report_templates")
+}
+
 model PredictionCache {
   id             String   @id @default(cuid())
   predictionType String
@@ -1203,6 +1319,157 @@ model PredictionCache {
   @@unique([tenantId, predictionType, inputHash])
   @@index([tenantId, expiresAt])
   @@map("prediction_cache")
+}
+
+model BusinessContext {
+  id                   String                @id @default(cuid())
+  
+  // Business Dimensions
+  businessUnit         String?               // Department/division
+  project              String?               // Project association
+  campaign             String?               // Marketing campaign
+  channel              String?               // Sales/expense channel
+  territory            String?               // Geographic territory
+  
+  // Customer/Vendor Intelligence
+  entitySegment        String?               // Customer/vendor segment
+  entityTier           String?               // VIP/Standard/Budget tier
+  relationshipLength   Int?                  // Days since first transaction
+  lifetimeValue        Decimal?              @db.Decimal(15, 2) // Calculated LTV
+  paymentHistory       Json?                 // Payment behavior patterns
+  riskProfile          String?               // Low/Medium/High risk
+  
+  // Contextual Metadata
+  marketConditions     Json?                 // Economic indicators at time
+  competitorAnalysis   Json?                 // Competitive context
+  seasonalFactors      Json?                 // Seasonal business patterns
+  externalEvents       Json?                 // Events affecting transaction
+  
+  // AI Learning Data
+  userDecisionPatterns Json?                 // How users categorize similar items
+  correctionHistory    Json?                 // Historical corrections made
+  predictionAccuracy   Json?                 // AI prediction success rates
+  
+  tenantId             String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  
+  entries              Entry[]
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entitySegment])
+  @@index([tenantId, businessUnit])
+  @@index([tenantId, createdAt])
+  @@map("business_contexts")
+}
+
+model AIModelPerformance {
+  id                   String                @id @default(cuid())
+  modelType            String                // categorization, prediction, etc.
+  tenantId             String
+  
+  // Performance Metrics
+  accuracy             Float
+  precision            Float
+  recall               Float
+  f1Score              Float
+  
+  // Business Metrics
+  timesSaved           Int                   // Minutes saved through automation
+  errorsDetected       Int                   // Anomalies caught
+  revenueImpact        Decimal?              @db.Decimal(15, 2) // Business value generated
+  
+  // Learning Progression
+  trainingDataPoints   Int
+  lastTrainingDate     DateTime
+  improvementRate      Float
+  
+  period               DateTime              // Performance period
+  createdAt            DateTime              @default(now())
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, modelType])
+  @@index([tenantId, period])
+  @@map("ai_model_performances")
+}
+
+model BusinessInsight {
+  id                   String                @id @default(cuid())
+  tenantId             String
+  
+  // Insight Classification
+  type                 InsightType
+  category             String                // Revenue, Cost, Risk, Opportunity
+  priority             InsightPriority
+  confidence           Float
+  
+  // Insight Content
+  title                String
+  description          String
+  actionable           Boolean               @default(false)
+  recommendations      Json                  // Structured recommendations
+  
+  // Impact Analysis
+  potentialImpact      Decimal?              @db.Decimal(15, 2) // Estimated financial impact
+  timeframe           String?                // When impact expected
+  effort              String?                // Implementation effort
+  
+  // Data Sources
+  dataPoints           Json                  // Source data used
+  relatedEntities      Json                  // Connected accounts/transactions
+  
+  // User Interaction
+  viewed               Boolean               @default(false)
+  viewedAt             DateTime?
+  actionTaken          String?               // What action user took
+  userFeedback         Json?                 // User rating/comments
+  
+  // Lifecycle
+  isActive             Boolean               @default(true)
+  expiresAt            DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, type])
+  @@index([tenantId, priority])
+  @@index([tenantId, isActive])
+  @@index([tenantId, createdAt])
+  @@map("business_insights")
+}
+
+model FinancialKPI {
+  id                   String                @id @default(cuid())
+  tenantId             String
+  
+  // KPI Definition
+  name                 String
+  category             String                // Profitability, Liquidity, etc.
+  calculation          Json                  // How to calculate
+  
+  // Current Values
+  currentValue         Decimal               @db.Decimal(15, 2)
+  previousValue        Decimal?              @db.Decimal(15, 2)
+  targetValue          Decimal?              @db.Decimal(15, 2)
+  benchmarkValue       Decimal?              @db.Decimal(15, 2) // Industry benchmark
+  
+  // Trends
+  trend                String                // UP, DOWN, STABLE
+  changePercent        Float?
+  
+  // AI Predictions
+  predictedValue       Decimal?              @db.Decimal(15, 2) // AI-predicted next value
+  predictionConfidence Float?
+  
+  period               DateTime              // KPI calculation period
+  createdAt            DateTime              @default(now())
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, category])
+  @@index([tenantId, period])
+  @@index([tenantId, name])
+  @@map("financial_kpis")
 }
 
 model AuditLog {
@@ -1268,11 +1535,41 @@ model CriticalActionLog {
 }
 
 enum AccountType {
-  ASSET
-  LIABILITY
+  // Asset sub-types
+  OTHER_ASSET
+  OTHER_CURRENT_ASSET
+  CASH
+  BANK
+  FIXED_ASSET
+  ACCOUNTS_RECEIVABLE
+  STOCK
+  PAYMENT_CLEARING_ACCOUNT
+  INPUT_TAX
+  INTANGIBLE_ASSET
+  NON_CURRENT_ASSET
+  DEFERRED_TAX_ASSET
+  
+  // Liability sub-types
+  OTHER_CURRENT_LIABILITY
+  CREDIT_CARD
+  NON_CURRENT_LIABILITY
+  OTHER_LIABILITY
+  ACCOUNTS_PAYABLE
+  OVERSEAS_TAX_PAYABLE
+  OUTPUT_TAX
+  DEFERRED_TAX_LIABILITY
+  
+  // Equity sub-types
   EQUITY
-  REVENUE
+  
+  // Income sub-types
+  INCOME
+  OTHER_INCOME
+  
+  // Expense sub-types
   EXPENSE
+  COST_OF_GOODS_SOLD
+  OTHER_EXPENSE
 }
 
 enum EntryType {
@@ -1438,4 +1735,73 @@ enum AIInsightType {
   PAYMENT_PREDICTION
   EXPENSE_ANALYSIS
   REVENUE_FORECAST
+}
+
+enum AutomationLevel {
+  MANUAL              // User-created
+  AI_SUGGESTED        // AI suggested, user approved
+  AI_AUTOMATED        // Fully automated by AI
+  AI_LEARNED          // AI learned from patterns
+}
+
+enum InsightType {
+  OPPORTUNITY          // Revenue growth opportunity
+  RISK                 // Financial risk detected
+  OPTIMIZATION         // Process improvement
+  PREDICTION           // Forecast insight
+  ANOMALY              // Unusual pattern detected
+  BENCHMARK            // Industry comparison
+}
+
+enum InsightPriority {
+  CRITICAL             // Immediate attention required
+  HIGH                 // Important, address soon
+  MEDIUM               // Moderate priority
+  LOW                  // FYI/background
+}
+
+// Phase 3 Enums for Enhanced Conversational AI
+enum ConversationStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  TIMEOUT
+}
+
+enum MessageType {
+  USER
+  ASSISTANT
+  SYSTEM
+  ERROR
+}
+
+enum PreferenceType {
+  REPORT_FORMAT
+  CURRENCY_DISPLAY
+  DATE_FORMAT
+  NOTIFICATION_FREQUENCY
+  DASHBOARD_LAYOUT
+  COMMUNICATION_STYLE
+  LANGUAGE
+  TIMEZONE
+}
+
+enum LearningSource {
+  CONVERSATION
+  USER_INTERACTION
+  SYSTEM_OBSERVATION
+  EXPLICIT_FEEDBACK
+}
+
+enum ReportType {
+  PROFIT_LOSS
+  BALANCE_SHEET
+  CASH_FLOW
+  TRIAL_BALANCE
+  GENERAL_LEDGER
+  ACCOUNTS_RECEIVABLE
+  ACCOUNTS_PAYABLE
+  INVENTORY_REPORT
+  TAX_REPORT
+  CUSTOM
 }

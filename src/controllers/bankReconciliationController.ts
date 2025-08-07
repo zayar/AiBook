@@ -10,7 +10,7 @@ export class BankReconciliationController {
   static async importBankStatement(req: Request, res: Response): Promise<void> {
     try {
       const { tenantId } = req.tenant!;
-      const userId = req.user?.id || 'system';
+      const userId = req.user?.uid || 'system';
       const userEmail = req.user?.email;
       
       const {
@@ -88,7 +88,7 @@ export class BankReconciliationController {
   static async autoMatchTransactions(req: Request, res: Response): Promise<void> {
     try {
       const { tenantId } = req.tenant!;
-      const userId = req.user?.id || 'system';
+      const userId = req.user?.uid || 'system';
       const userEmail = req.user?.email;
       const { statementId } = req.params;
 
@@ -141,7 +141,7 @@ export class BankReconciliationController {
   static async manualTransactionMatch(req: Request, res: Response): Promise<void> {
     try {
       const { tenantId } = req.tenant!;
-      const userId = req.user?.id || 'system';
+      const userId = req.user?.uid || 'system';
       const userEmail = req.user?.email;
       
       const { statementTransactionId, bookTransactionId } = req.body;
@@ -202,7 +202,7 @@ export class BankReconciliationController {
   static async performReconciliation(req: Request, res: Response): Promise<void> {
     try {
       const { tenantId } = req.tenant!;
-      const userId = req.user?.id || 'system';
+      const userId = req.user?.uid || 'system';
       const userEmail = req.user?.email;
       const { paymentMethodId } = req.params;
       const { statementId, reconciliationDate } = req.body;

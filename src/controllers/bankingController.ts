@@ -150,16 +150,77 @@ export class BankingController {
         }
       }
 
-      const paymentMethod = await prisma.paymentMethod.create({
-        data: {
-          ...validatedData,
-          tenantId
+      // Use transaction to create both payment method and chart of accounts entry
+      const result = await prisma.$transaction(async (tx) => {
+        // Create the payment method
+        const paymentMethod = await tx.paymentMethod.create({
+          data: {
+            ...validatedData,
+            tenantId
+          }
+        });
+
+        // Get the default book for this tenant
+        const book = await tx.book.findFirst({
+          where: { tenantId },
+          orderBy: { createdAt: 'asc' }
+        });
+
+        if (!book) {
+          throw new Error('No accounting book found for tenant');
         }
+
+        // Generate a unique account code for the bank account
+        // Find the next available code in the 1100-1199 range (Bank accounts)
+        const existingBankAccounts = await tx.account.findMany({
+          where: {
+            tenantId,
+            OR: [
+              { type: 'BANK' },
+              { type: 'CREDIT_CARD' }
+            ]
+          },
+          select: { code: true },
+          orderBy: { code: 'asc' }
+        });
+
+        // Find the next available code starting from 1100
+        let accountCode = '1100';
+        const existingCodes = existingBankAccounts.map(acc => acc.code);
+        
+        for (let i = 1100; i < 1200; i++) {
+          const codeStr = i.toString();
+          if (!existingCodes.includes(codeStr)) {
+            accountCode = codeStr;
+            break;
+          }
+        }
+
+        // Determine account type based on payment method type
+        const accountType = validatedData.type === 'credit_card' ? 'CREDIT_CARD' : 'BANK';
+
+        // Create corresponding Chart of Accounts entry
+        const chartAccount = await tx.account.create({
+          data: {
+            code: accountCode,
+            name: validatedData.name,
+            type: accountType,
+            description: `${validatedData.type === 'credit_card' ? 'Credit Card' : 'Bank Account'}: ${validatedData.bankName || validatedData.name}`,
+            currency: validatedData.currency || 'MMK',
+            bookId: book.id,
+            tenantId,
+            balance: 0,
+            isActive: validatedData.isActive
+          }
+        });
+
+        return { paymentMethod, chartAccount };
       });
 
       res.status(201).json({
-        message: 'Payment method created successfully',
-        paymentMethod
+        message: 'Payment method and chart account created successfully',
+        paymentMethod: result.paymentMethod,
+        chartAccount: result.chartAccount
       });
     } catch (error) {
       console.error('Create payment method error:', error);
@@ -224,14 +285,48 @@ export class BankingController {
         }
       }
 
-      const updatedMethod = await prisma.paymentMethod.update({
-        where: { id },
-        data: validatedData
+      // Use transaction to update both payment method and chart of accounts entry
+      const result = await prisma.$transaction(async (tx) => {
+        const updatedMethod = await tx.paymentMethod.update({
+          where: { id },
+          data: validatedData
+        });
+
+        // Find and update corresponding chart account
+        // Look for account that might be linked to this payment method
+        const linkedAccount = await tx.account.findFirst({
+          where: {
+            tenantId,
+            OR: [
+              { name: existingMethod.name },
+              { description: { contains: existingMethod.name } }
+            ],
+            type: { in: ['BANK', 'CREDIT_CARD'] }
+          }
+        });
+
+        if (linkedAccount) {
+          // Update the chart account to match payment method changes
+          const accountType = validatedData.type === 'credit_card' ? 'CREDIT_CARD' : 'BANK';
+          
+          await tx.account.update({
+            where: { id: linkedAccount.id },
+            data: {
+              name: validatedData.name,
+              type: accountType,
+              description: `${validatedData.type === 'credit_card' ? 'Credit Card' : 'Bank Account'}: ${validatedData.bankName || validatedData.name}`,
+              currency: validatedData.currency || linkedAccount.currency,
+              isActive: validatedData.isActive
+            }
+          });
+        }
+
+        return updatedMethod;
       });
 
       res.json({
         message: 'Payment method updated successfully',
-        paymentMethod: updatedMethod
+        paymentMethod: result
       });
     } catch (error) {
       console.error('Update payment method error:', error);
@@ -268,14 +363,36 @@ export class BankingController {
         return res.status(404).json({ error: 'Payment method not found' });
       }
 
-      // For now, always soft delete to be safe
-      await prisma.paymentMethod.update({
-        where: { id },
-        data: { isActive: false }
+      // Use transaction to soft delete both payment method and chart account
+      await prisma.$transaction(async (tx) => {
+        // Soft delete payment method
+        await tx.paymentMethod.update({
+          where: { id },
+          data: { isActive: false }
+        });
+
+        // Find and soft delete corresponding chart account
+        const linkedAccount = await tx.account.findFirst({
+          where: {
+            tenantId,
+            OR: [
+              { name: paymentMethod.name },
+              { description: { contains: paymentMethod.name } }
+            ],
+            type: { in: ['BANK', 'CREDIT_CARD'] }
+          }
+        });
+
+        if (linkedAccount) {
+          await tx.account.update({
+            where: { id: linkedAccount.id },
+            data: { isActive: false }
+          });
+        }
       });
 
       res.json({
-        message: 'Payment method deactivated successfully',
+        message: 'Payment method and related chart account deactivated successfully',
         deactivated: true
       });
     } catch (error) {

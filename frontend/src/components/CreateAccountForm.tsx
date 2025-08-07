@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, X, AlertTriangle } from 'lucide-react';
 import { ChartOfAccountsAPI, CreateAccountData, Account } from '@/lib/chart-of-accounts-api';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 interface CreateAccountFormProps {
   onSubmit: (data: CreateAccountData) => Promise<void>;
@@ -11,36 +12,18 @@ interface CreateAccountFormProps {
 }
 
 export default function CreateAccountForm({ onSubmit, onCancel, formId }: CreateAccountFormProps) {
+  const { baseCurrency } = useCurrency();
+  
   const [formData, setFormData] = useState<CreateAccountData>({
     code: '',
     name: '',
-    type: 'ASSET',
-    currency: 'MMK',
+    type: 'OTHER_ASSET',
     description: '',
     isActive: true,
   });
   
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [parentAccounts, setParentAccounts] = useState<Account[]>([]);
-  const [isLoadingParents, setIsLoadingParents] = useState(false);
-
-  // Load parent accounts when type changes
-  useEffect(() => {
-    loadParentAccounts();
-  }, [formData.type]);
-
-  const loadParentAccounts = async () => {
-    try {
-      setIsLoadingParents(true);
-      const response = await ChartOfAccountsAPI.getAccountsByType(formData.type);
-      setParentAccounts(response.accounts);
-    } catch (error) {
-      console.error('Error loading parent accounts:', error);
-    } finally {
-      setIsLoadingParents(false);
-    }
-  };
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -120,12 +103,73 @@ export default function CreateAccountForm({ onSubmit, onCancel, formId }: Create
     }
   };
 
-  const accountTypes = [
-    { value: 'ASSET', label: 'Asset', icon: '💰', description: 'Resources owned by the company' },
-    { value: 'LIABILITY', label: 'Liability', icon: '📋', description: 'Debts and obligations' },
-    { value: 'EQUITY', label: 'Equity', icon: '🏛️', description: 'Owner\'s equity and capital' },
-    { value: 'REVENUE', label: 'Revenue', icon: '📈', description: 'Income and sales' },
-    { value: 'EXPENSE', label: 'Expense', icon: '📊', description: 'Costs and expenses' },
+  const accountTypeHierarchy = [
+    {
+      category: 'ASSET',
+      label: 'Asset',
+      icon: '💰',
+      disabled: true,
+      children: [
+        { value: 'OTHER_ASSET', label: 'Other Asset' },
+        { value: 'OTHER_CURRENT_ASSET', label: 'Other Current Asset' },
+        { value: 'CASH', label: 'Cash' },
+        { value: 'BANK', label: 'Bank' },
+        { value: 'FIXED_ASSET', label: 'Fixed Asset' },
+        { value: 'ACCOUNTS_RECEIVABLE', label: 'Accounts Receivable' },
+        { value: 'STOCK', label: 'Stock' },
+        { value: 'PAYMENT_CLEARING_ACCOUNT', label: 'Payment Clearing Account' },
+        { value: 'INPUT_TAX', label: 'Input Tax' },
+        { value: 'INTANGIBLE_ASSET', label: 'Intangible Asset' },
+        { value: 'NON_CURRENT_ASSET', label: 'Non Current Asset' },
+        { value: 'DEFERRED_TAX_ASSET', label: 'Deferred Tax Asset' },
+      ]
+    },
+    {
+      category: 'LIABILITY',
+      label: 'Liability',
+      icon: '📋',
+      disabled: true,
+      children: [
+        { value: 'OTHER_CURRENT_LIABILITY', label: 'Other Current Liability' },
+        { value: 'CREDIT_CARD', label: 'Credit Card' },
+        { value: 'NON_CURRENT_LIABILITY', label: 'Non Current Liability' },
+        { value: 'OTHER_LIABILITY', label: 'Other Liability' },
+        { value: 'ACCOUNTS_PAYABLE', label: 'Accounts Payable' },
+        { value: 'OVERSEAS_TAX_PAYABLE', label: 'Overseas Tax Payable' },
+        { value: 'OUTPUT_TAX', label: 'Output Tax' },
+        { value: 'DEFERRED_TAX_LIABILITY', label: 'Deferred Tax Liability' },
+      ]
+    },
+    {
+      category: 'EQUITY',
+      label: 'Equity',
+      icon: '🏛️',
+      disabled: true,
+      children: [
+        { value: 'EQUITY', label: 'Equity' },
+      ]
+    },
+    {
+      category: 'INCOME',
+      label: 'Income',
+      icon: '📈',
+      disabled: true,
+      children: [
+        { value: 'INCOME', label: 'Income' },
+        { value: 'OTHER_INCOME', label: 'Other Income' },
+      ]
+    },
+    {
+      category: 'EXPENSE',
+      label: 'Expense',
+      icon: '📊',
+      disabled: true,
+      children: [
+        { value: 'EXPENSE', label: 'Expense' },
+        { value: 'COST_OF_GOODS_SOLD', label: 'Cost Of Goods Sold' },
+        { value: 'OTHER_EXPENSE', label: 'Other Expense' },
+      ]
+    }
   ];
 
   return (
@@ -196,10 +240,15 @@ export default function CreateAccountForm({ onSubmit, onCancel, formId }: Create
             errors.type ? 'border-red-300 bg-red-50' : 'border-gray-300'
           }`}
         >
-          {accountTypes.map((type) => (
-            <option key={type.value} value={type.value}>
-              {type.icon} {type.label} - {type.description}
-            </option>
+          <option value="">Select Account Type</option>
+          {accountTypeHierarchy.map((category) => (
+            <optgroup key={category.category} label={`${category.icon} ${category.label}`}>
+              {category.children.map((subType) => (
+                <option key={subType.value} value={subType.value}>
+                  {subType.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         {errors.type && (
@@ -207,51 +256,7 @@ export default function CreateAccountForm({ onSubmit, onCancel, formId }: Create
         )}
       </div>
 
-      {/* Parent Account */}
-      <div>
-        <label htmlFor="parentId" className="block text-sm font-medium text-gray-700 mb-2">
-          Parent Account (Optional)
-        </label>
-        <select
-          id="parentId"
-          value={formData.parentId || ''}
-          onChange={(e) => handleChange('parentId', e.target.value || undefined)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          disabled={isLoadingParents}
-        >
-          <option value="">No Parent (Top Level Account)</option>
-          {parentAccounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.code} - {account.name}
-            </option>
-          ))}
-        </select>
-        {isLoadingParents && (
-          <p className="mt-1 text-xs text-gray-500">Loading parent accounts...</p>
-        )}
-        <p className="mt-1 text-xs text-gray-500">
-          Create sub-accounts by selecting a parent account of the same type
-        </p>
-      </div>
 
-      {/* Currency */}
-      <div>
-        <label htmlFor="currency" className="block text-sm font-medium text-gray-700 mb-2">
-          Currency
-        </label>
-        <select
-          id="currency"
-          value={formData.currency}
-          onChange={(e) => handleChange('currency', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="MMK">MMK - Myanmar Kyat</option>
-          <option value="USD">USD - US Dollar</option>
-          <option value="EUR">EUR - Euro</option>
-          <option value="SGD">SGD - Singapore Dollar</option>
-          <option value="THB">THB - Thai Baht</option>
-        </select>
-      </div>
 
       {/* Description */}
       <div>

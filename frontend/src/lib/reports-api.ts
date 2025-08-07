@@ -77,7 +77,11 @@ export class ReportsAPI {
    */
   static async getReportsMenu() {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/menu`);
+      const response = await axios.get(`${this.baseURL}/reports/menu`, {
+        headers: {
+          'X-Tenant-ID': 'default'
+        }
+      });
       return response.data;
     } catch (error) {
       console.error('❌ Error fetching reports menu:', error);
@@ -90,7 +94,7 @@ export class ReportsAPI {
    */
   static async getGeneralLedger(params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/general-ledger`, {
+      const response = await axios.get(`${this.baseURL}/reports/general-ledger`, {
         params,
         headers: {
           'X-Tenant-ID': 'default'
@@ -108,7 +112,7 @@ export class ReportsAPI {
    */
   static async getAccountTransactions(params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/account-transactions`, {
+      const response = await axios.get(`${this.baseURL}/reports/account-transactions`, {
         params,
         headers: {
           'X-Tenant-ID': 'default'
@@ -126,7 +130,7 @@ export class ReportsAPI {
    */
   static async getJournalReport(params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/journal-entries`, {
+      const response = await axios.get(`${this.baseURL}/reports/journal-entries`, {
         params,
         headers: {
           'X-Tenant-ID': 'default'
@@ -144,7 +148,7 @@ export class ReportsAPI {
    */
   static async getTrialBalance(params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/trial-balance`, {
+      const response = await axios.get(`${this.baseURL}/reports/trial-balance`, {
         params,
         headers: {
           'X-Tenant-ID': 'default'
@@ -162,7 +166,7 @@ export class ReportsAPI {
    */
   static async getCashFlow(params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/cash-flow`, {
+      const response = await axios.get(`${this.baseURL}/reports/cash-flow`, {
         params,
         headers: {
           'X-Tenant-ID': 'default'
@@ -180,7 +184,7 @@ export class ReportsAPI {
    */
   static async getProfitLoss(params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/profit-loss`, {
+      const response = await axios.get(`${this.baseURL}/reports/profit-loss`, {
         params,
         headers: {
           'X-Tenant-ID': 'default'
@@ -239,7 +243,7 @@ export class ReportsAPI {
    */
   static async exportToPDF(reportType: string, params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/${reportType}`, {
+      const response = await axios.get(`${this.baseURL}/reports/${reportType}`, {
         params: { ...params, format: 'pdf' },
         headers: {
           'X-Tenant-ID': 'default'
@@ -267,7 +271,7 @@ export class ReportsAPI {
    */
   static async exportToExcel(reportType: string, params: ReportParams = {}) {
     try {
-      const response = await axios.get(`${this.baseURL}/reports-new/${reportType}`, {
+      const response = await axios.get(`${this.baseURL}/reports/${reportType}`, {
         params: { ...params, format: 'excel' },
         headers: {
           'X-Tenant-ID': 'default'

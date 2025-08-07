@@ -163,6 +163,7 @@ export interface CreateVendorPaymentData {
   paymentDate?: string;
   paymentMode?: 'CASH' | 'BANK_TRANSFER' | 'CHECK' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'MOBILE_PAYMENT' | 'OTHER';
   paidThroughId: string;
+  paidThroughAccountId?: string; // NEW: Chart of Accounts integration
   referenceNumber?: string;
   taxDeducted?: boolean;
   taxAmount?: number;
@@ -318,6 +319,19 @@ export class VendorPaymentAPI {
       return response.data;
     } catch (error) {
       console.error('Error fetching payment methods:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get paid through accounts for vendor payments
+   */
+  static async getPaidThroughAccounts(): Promise<{ accounts: any[] }> {
+    try {
+      const response = await api.get('/vendor-payments/paid-through-accounts');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching paid through accounts:', error);
       throw error;
     }
   }

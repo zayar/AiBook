@@ -103,18 +103,42 @@ export interface AccountHierarchyResponse {
 export interface CreateAccountData {
   code: string;
   name: string;
-  type: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
-  currency?: string;
-  parentId?: string;
+  type: 
+    // Asset sub-types
+    | 'OTHER_ASSET' | 'OTHER_CURRENT_ASSET' | 'CASH' | 'BANK' | 'FIXED_ASSET' 
+    | 'ACCOUNTS_RECEIVABLE' | 'STOCK' | 'PAYMENT_CLEARING_ACCOUNT' | 'INPUT_TAX'
+    | 'INTANGIBLE_ASSET' | 'NON_CURRENT_ASSET' | 'DEFERRED_TAX_ASSET'
+    // Liability sub-types
+    | 'OTHER_CURRENT_LIABILITY' | 'CREDIT_CARD' | 'NON_CURRENT_LIABILITY'
+    | 'OTHER_LIABILITY' | 'ACCOUNTS_PAYABLE' | 'OVERSEAS_TAX_PAYABLE'
+    | 'OUTPUT_TAX' | 'DEFERRED_TAX_LIABILITY'
+    // Equity sub-types
+    | 'EQUITY'
+    // Income sub-types
+    | 'INCOME' | 'OTHER_INCOME'
+    // Expense sub-types
+    | 'EXPENSE' | 'COST_OF_GOODS_SOLD' | 'OTHER_EXPENSE';
   description?: string;
   isActive?: boolean;
 }
 
 export interface UpdateAccountData {
   name?: string;
-  type?: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
-  currency?: string;
-  parentId?: string;
+  type?: 
+    // Asset sub-types
+    | 'OTHER_ASSET' | 'OTHER_CURRENT_ASSET' | 'CASH' | 'BANK' | 'FIXED_ASSET' 
+    | 'ACCOUNTS_RECEIVABLE' | 'STOCK' | 'PAYMENT_CLEARING_ACCOUNT' | 'INPUT_TAX'
+    | 'INTANGIBLE_ASSET' | 'NON_CURRENT_ASSET' | 'DEFERRED_TAX_ASSET'
+    // Liability sub-types
+    | 'OTHER_CURRENT_LIABILITY' | 'CREDIT_CARD' | 'NON_CURRENT_LIABILITY'
+    | 'OTHER_LIABILITY' | 'ACCOUNTS_PAYABLE' | 'OVERSEAS_TAX_PAYABLE'
+    | 'OUTPUT_TAX' | 'DEFERRED_TAX_LIABILITY'
+    // Equity sub-types
+    | 'EQUITY'
+    // Income sub-types
+    | 'INCOME' | 'OTHER_INCOME'
+    // Expense sub-types
+    | 'EXPENSE' | 'COST_OF_GOODS_SOLD' | 'OTHER_EXPENSE';
   description?: string;
   isActive?: boolean;
 }

@@ -1,6 +1,7 @@
-import { AccountType } from '@prisma/client';
+import { accounts_type } from '@prisma/client';
 import { JournalEntry, JournalEntryValidation, ValidationError, ValidationWarning } from '../models/JournalEntry';
 import { Account } from '../models/Account';
+import { FiscalYearService } from '../../services/FiscalYearService';
 
 /**
  * ✅ ACCOUNTING VALIDATOR
@@ -14,9 +15,11 @@ import { Account } from '../models/Account';
  */
 export class AccountingValidator {
   private tenantId: string;
+  private fiscalYearService: FiscalYearService;
 
   constructor(tenantId: string) {
     this.tenantId = tenantId;
+    this.fiscalYearService = new FiscalYearService(tenantId);
   }
 
   /**
@@ -207,13 +210,19 @@ export class AccountingValidator {
 
   /**
    * 🗓️ VALIDATE ACCOUNTING PERIODS
-   * Ensure transactions are in open periods
+   * Ensure transactions are in open periods using organization fiscal year
    */
-  validateAccountingPeriod(transactionDate: Date): {
+  async validateAccountingPeriod(transactionDate: Date): Promise<{
     isValid: boolean;
     errors: ValidationError[];
     warnings: ValidationWarning[];
-  } {
+    fiscalInfo?: {
+      fiscalYear: number;
+      quarter: number;
+      month: number;
+      periodDescription: string;
+    };
+  }> {
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
     const now = new Date();
@@ -227,33 +236,83 @@ export class AccountingValidator {
       });
     }
 
-    // Check if date is too far in the past (more than 2 years)
-    const twoYearsAgo = new Date();
-    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    try {
+      // Get fiscal year information for the transaction date
+      const fiscalYear = await this.fiscalYearService.getFiscalYearForDate(transactionDate);
+      const currentFiscalYear = await this.fiscalYearService.getFiscalYearForDate(now);
+      
+      // Get fiscal period details
+      const quarters = await this.fiscalYearService.getFiscalQuarters(fiscalYear);
+      const months = await this.fiscalYearService.getFiscalMonths(fiscalYear);
+      
+      const quarter = quarters.find(q => transactionDate >= q.startDate && transactionDate <= q.endDate);
+      const month = months.find(m => transactionDate >= m.startDate && transactionDate <= m.endDate);
+      
+      const fiscalInfo = {
+        fiscalYear,
+        quarter: quarter?.quarter || 0,
+        month: month?.month || 0,
+        periodDescription: `FY${fiscalYear} Q${quarter?.quarter || '?'} M${month?.month || '?'}`
+      };
 
-    if (transactionDate < twoYearsAgo) {
-      warnings.push({
-        code: 'OLD_TRANSACTION',
-        message: 'Transaction is more than 2 years old. Verify this is correct.',
+      // Check if date is too far in the past (more than 5 fiscal years)
+      if (fiscalYear < currentFiscalYear - 5) {
+        warnings.push({
+          code: 'OLD_TRANSACTION',
+          message: `Transaction is in fiscal year ${fiscalYear}, which is more than 5 years old. Verify this is correct.`,
+          field: 'transactionDate'
+        });
+      }
+
+      // Check if transaction is in a previous fiscal period
+      if (fiscalYear < currentFiscalYear) {
+        warnings.push({
+          code: 'PREVIOUS_FISCAL_YEAR',
+          message: `Transaction is in a previous fiscal year (FY${fiscalYear}). This may require period-end adjustments.`,
+          field: 'transactionDate'
+        });
+      }
+
+      // Check if transaction is in a future fiscal year
+      if (fiscalYear > currentFiscalYear + 1) {
+        warnings.push({
+          code: 'FUTURE_FISCAL_YEAR',
+          message: `Transaction is in fiscal year ${fiscalYear}, which is more than one year in the future.`,
+          field: 'transactionDate'
+        });
+      }
+
+      // Check if transaction is in a previous quarter within current fiscal year
+      if (fiscalYear === currentFiscalYear && quarter) {
+        const currentPeriod = await this.fiscalYearService.getCurrentFiscalPeriod();
+        if (quarter.quarter < currentPeriod.quarter.quarter) {
+          warnings.push({
+            code: 'PREVIOUS_QUARTER',
+            message: `Transaction is in Q${quarter.quarter} of current fiscal year. Current quarter is Q${currentPeriod.quarter.quarter}.`,
+            field: 'transactionDate'
+          });
+        }
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+        warnings,
+        fiscalInfo
+      };
+    } catch (error) {
+      errors.push({
+        code: 'FISCAL_VALIDATION_ERROR',
+        message: 'Unable to validate fiscal period. Please check organization fiscal year settings.',
         field: 'transactionDate'
       });
-    }
 
-    // Check if date is in a previous month (potential late entry)
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    if (transactionDate < startOfMonth) {
-      warnings.push({
-        code: 'PREVIOUS_PERIOD',
-        message: 'Transaction is in a previous accounting period',
-        field: 'transactionDate'
-      });
+      return {
+        isValid: false,
+        errors,
+        warnings
+      };
     }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    };
   }
 
   // Private validation methods

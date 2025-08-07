@@ -239,12 +239,15 @@ export class BankTransactionService {
       // For withdrawals: If contra is Expense (debit normal), debit it (increase)
       let contraEntryType: 'DEBIT' | 'CREDIT';
       
+      // Get the category for the account type
+      const accountCategory = ACCOUNT_CATEGORIES[contraAccount.type as keyof typeof ACCOUNT_CATEGORIES]?.category || 'ASSET';
+      
       if (isDeposit) {
-        // Deposit: Credit the source (Revenue/Liability/Equity increases with credit)
-        contraEntryType = ['LIABILITY', 'EQUITY', 'REVENUE'].includes(contraAccount.type) ? 'CREDIT' : 'DEBIT';
+        // Deposit: Credit the source (Income/Liability/Equity increases with credit)
+        contraEntryType = ['LIABILITY', 'EQUITY', 'INCOME'].includes(accountCategory) ? 'CREDIT' : 'DEBIT';
       } else {
         // Withdrawal: Debit the destination (Asset/Expense increases with debit)
-        contraEntryType = ['ASSET', 'EXPENSE'].includes(contraAccount.type) ? 'DEBIT' : 'CREDIT';
+        contraEntryType = ['ASSET', 'EXPENSE'].includes(accountCategory) ? 'DEBIT' : 'CREDIT';
       }
 
       const contraEntry = await tx.entry.create({
@@ -349,13 +352,13 @@ export class BankTransactionService {
     if (data.type === 'DEPOSIT') {
       // Deposits typically come from Revenue accounts (CREDIT normal balance)
       if (category.includes('sales') || description.includes('payment') || description.includes('invoice')) {
-        return await this.findOrCreateAccount(tx, '4110', 'Product Sales', 'REVENUE', tenantId, bookId);
+        return await this.findOrCreateAccount(tx, '4110', 'Product Sales', 'INCOME', tenantId, bookId);
       } else if (category.includes('service') || description.includes('service')) {
-        return await this.findOrCreateAccount(tx, '4120', 'Service Revenue', 'REVENUE', tenantId, bookId);
+        return await this.findOrCreateAccount(tx, '4120', 'Service Revenue', 'INCOME', tenantId, bookId);
       } else if (description.includes('interest')) {
-        return await this.findOrCreateAccount(tx, '4210', 'Interest Income', 'REVENUE', tenantId, bookId);
+        return await this.findOrCreateAccount(tx, '4210', 'Interest Income', 'OTHER_INCOME', tenantId, bookId);
       } else {
-        return await this.findOrCreateAccount(tx, '4200', 'Other Revenue', 'REVENUE', tenantId, bookId);
+        return await this.findOrCreateAccount(tx, '4200', 'Other Revenue', 'OTHER_INCOME', tenantId, bookId);
       }
     } else {
       // Withdrawals typically go to Expense accounts (DEBIT normal balance)
@@ -420,7 +423,7 @@ export class BankTransactionService {
         accountName = `Other Payment - ${paymentMethod.name}`;
     }
 
-    return await this.findOrCreateAccount(tx, accountCode, accountName, 'ASSET', tenantId, book.id);
+    return await this.findOrCreateAccount(tx, accountCode, accountName, 'BANK', tenantId, book.id);
   }
 
   /**

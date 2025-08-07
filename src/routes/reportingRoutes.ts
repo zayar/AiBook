@@ -27,8 +27,15 @@ router.use(tenantMiddleware);
  */
 
 // Core financial reports
-router.get('/profit-loss', ReportingController.getProfitLossReport);
-router.get('/cash-flow', ReportingController.getCashFlowReport);
+// Temporarily disabled to prevent route conflicts
+// router.get('/profit-loss', ReportingController.getProfitLossReport);
+// Use the working cash flow implementation from ReportsController
+// router.get('/cash-flow', ReportingController.getCashFlowReport);
 router.get('/balance-sheet', ReportingController.getBalanceSheetReport);
+
+// 📅 Fiscal year aware reports
+router.get('/fiscal-year', ReportingController.getFiscalYearReports);
+router.get('/fiscal-year/info', ReportingController.getFiscalYearInfo);
+router.post('/validate-period', ReportingController.validateReportingPeriod);
 
 export default router; 

@@ -29,7 +29,8 @@ const NewPaymentMadePage = () => {
     bankCharges: 0,
     paymentDate: new Date().toISOString().split('T')[0],
     paymentMode: 'CASH',
-    paidThroughId: '',
+    paidThroughId: '', // Keep for backward compatibility
+    paidThroughAccountId: '', // NEW: Chart of Accounts integration
     referenceNumber: '',
     taxDeducted: false,
     taxAmount: 0,
@@ -42,9 +43,14 @@ const NewPaymentMadePage = () => {
   // Options data
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [paymentAccounts, setPaymentAccounts] = useState<Account[]>([]);
+  const [paidThroughAccounts, setPaidThroughAccounts] = useState<any[]>([]); // Chart of Accounts for paid through selection
   const [pendingBills, setPendingBills] = useState<PendingBill[]>([]);
   const [billAllocations, setBillAllocations] = useState<BillAllocation[]>([]);
   const [nextPaymentNumber, setNextPaymentNumber] = useState<string>('');
+
+  // Custom dropdown states
+  const [isPaidThroughDropdownOpen, setIsPaidThroughDropdownOpen] = useState(false);
+  const [paidThroughSearchTerm, setPaidThroughSearchTerm] = useState('');
 
   // Loading states
   const [loadingVendors, setLoadingVendors] = useState(true);
@@ -69,6 +75,25 @@ const NewPaymentMadePage = () => {
     loadInitialData();
   }, []);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.paid-through-dropdown')) {
+        setIsPaidThroughDropdownOpen(false);
+        setPaidThroughSearchTerm('');
+      }
+    };
+
+    if (isPaidThroughDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isPaidThroughDropdownOpen]);
+
   const loadVendors = async () => {
     try {
       setLoadingVendors(true);
@@ -85,12 +110,20 @@ const NewPaymentMadePage = () => {
     try {
       setLoadingAccounts(true);
       
-      // Get payment methods from banking module
-      const response = await VendorPaymentAPI.getPaymentMethods();
-      setPaymentAccounts(response.paymentMethods || response);
+      // Get paid through accounts from Chart of Accounts
+      const response = await VendorPaymentAPI.getPaidThroughAccounts();
+      setPaidThroughAccounts(response.accounts || []);
+      
+      // Set default paid through account if available
+      const defaultAccount = response.accounts?.find(acc => acc.type === 'CASH');
+      if (defaultAccount && !formData.paidThroughAccountId) {
+        setFormData(prev => ({ ...prev, paidThroughAccountId: defaultAccount.id }));
+      } else if (response.accounts?.length > 0 && !formData.paidThroughAccountId) {
+        setFormData(prev => ({ ...prev, paidThroughAccountId: response.accounts[0].id }));
+      }
     } catch (error) {
-      console.error('Error loading payment methods:', error);
-      setPaymentAccounts([]);
+      console.error('Error loading paid through accounts:', error);
+      setPaidThroughAccounts([]);
     } finally {
       setLoadingAccounts(false);
     }
@@ -177,6 +210,13 @@ const NewPaymentMadePage = () => {
     setError(null);
 
     try {
+      // Validation
+      if (!formData.paidThroughAccountId) {
+        setError('Please select a paid through account');
+        setLoading(false);
+        return;
+      }
+
       // Prepare bill payments from allocations
       const billPayments = billAllocations
         .filter(allocation => allocation.amountToPay > 0)
@@ -187,6 +227,7 @@ const NewPaymentMadePage = () => {
 
       const paymentData: CreateVendorPaymentData = {
         ...formData,
+        paidThroughId: formData.paidThroughAccountId, // Map to the expected field
         billPayments: billPayments.length > 0 ? billPayments : undefined,
       };
 
@@ -215,6 +256,25 @@ const NewPaymentMadePage = () => {
       month: 'short',
       year: 'numeric'
     });
+  };
+
+  // Helper functions for custom dropdown
+  const getSelectedPaidThroughAccount = () => {
+    return paidThroughAccounts.find(acc => acc.id === formData.paidThroughAccountId);
+  };
+
+  const getFilteredPaidThroughAccounts = () => {
+    if (!paidThroughSearchTerm) return paidThroughAccounts;
+    return paidThroughAccounts.filter(acc => 
+      acc.name.toLowerCase().includes(paidThroughSearchTerm.toLowerCase()) ||
+      acc.code.toLowerCase().includes(paidThroughSearchTerm.toLowerCase())
+    );
+  };
+
+  const handlePaidThroughAccountSelect = (accountId: string) => {
+    setFormData(prev => ({ ...prev, paidThroughAccountId: accountId }));
+    setIsPaidThroughDropdownOpen(false);
+    setPaidThroughSearchTerm('');
   };
 
   if (success) {
@@ -325,24 +385,226 @@ const NewPaymentMadePage = () => {
                 </select>
               </div>
 
-              <div>
+              <div className="relative paid-through-dropdown">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Paid Through <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={formData.paidThroughId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, paidThroughId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsPaidThroughDropdownOpen(!isPaidThroughDropdownOpen)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-left flex items-center justify-between"
                   disabled={loadingAccounts}
                 >
-                  <option value="">Select payment account</option>
-                  {paymentAccounts.map(paymentMethod => (
-                    <option key={paymentMethod.id} value={paymentMethod.id}>
-                      {paymentMethod.name} {paymentMethod.accountNumber && `(${paymentMethod.accountNumber})`}
-                    </option>
-                  ))}
-                </select>
+                    <span className={formData.paidThroughAccountId ? 'text-gray-900' : 'text-gray-500'}>
+                      {formData.paidThroughAccountId 
+                        ? `${getSelectedPaidThroughAccount()?.code} - ${getSelectedPaidThroughAccount()?.name}`
+                        : 'Select payment account...'
+                      }
+                    </span>
+                    <svg className={`w-5 h-5 text-gray-400 transition-transform ${isPaidThroughDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {isPaidThroughDropdownOpen && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-80 overflow-hidden">
+                      {/* Search Input */}
+                      <div className="p-3 border-b border-gray-200">
+                        <input
+                          type="text"
+                          placeholder="Search accounts..."
+                          value={paidThroughSearchTerm}
+                          onChange={(e) => setPaidThroughSearchTerm(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          autoFocus
+                        />
+                      </div>
+                      
+                      {/* Scrollable Options */}
+                      <div className="max-h-60 overflow-y-auto">
+                        {getFilteredPaidThroughAccounts().length === 0 ? (
+                          <div className="px-4 py-3 text-gray-500 text-sm">No accounts found</div>
+                        ) : (
+                          <>
+                            {/* Cash Accounts */}
+                            {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'CASH').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  💰 Cash
+                                </div>
+                                {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'CASH').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handlePaidThroughAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.paidThroughAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Bank Accounts */}
+                            {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'BANK').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  🏦 Bank
+                                </div>
+                                {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'BANK').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handlePaidThroughAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.paidThroughAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Other Current Liabilities */}
+                            {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'OTHER_CURRENT_LIABILITY').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  📊 Other Current Liabilities
+                                </div>
+                                {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'OTHER_CURRENT_LIABILITY').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handlePaidThroughAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.paidThroughAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Other Liabilities */}
+                            {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'OTHER_LIABILITY').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  📋 Other Liabilities
+                                </div>
+                                {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'OTHER_LIABILITY').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handlePaidThroughAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.paidThroughAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Equity Accounts */}
+                            {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'EQUITY').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  🏛️ Equity
+                                </div>
+                                {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'EQUITY').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handlePaidThroughAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.paidThroughAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Other Current Assets */}
+                            {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'OTHER_CURRENT_ASSET').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  📁 Other Current Assets
+                                </div>
+                                {getFilteredPaidThroughAccounts().filter(acc => acc.type === 'OTHER_CURRENT_ASSET').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handlePaidThroughAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.paidThroughAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Other Assets */}
+                            {getFilteredPaidThroughAccounts().filter(acc => !['CASH', 'BANK', 'OTHER_CURRENT_LIABILITY', 'OTHER_LIABILITY', 'EQUITY', 'OTHER_CURRENT_ASSET'].includes(acc.type)).length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  📂 Other Assets
+                                </div>
+                                {getFilteredPaidThroughAccounts().filter(acc => !['CASH', 'BANK', 'OTHER_CURRENT_LIABILITY', 'OTHER_LIABILITY', 'EQUITY', 'OTHER_CURRENT_ASSET'].includes(acc.type)).map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handlePaidThroughAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none ${
+                                      formData.paidThroughAccountId === account.id ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {paidThroughAccounts.length === 0 && (
+                  <p className="mt-1 text-xs text-red-500">
+                    No paid through accounts found. Please add accounts in the Chart of Accounts section first.
+                  </p>
+                )}
               </div>
 
               <div>

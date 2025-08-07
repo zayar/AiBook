@@ -201,7 +201,7 @@ export class JournalEntryEngine {
     // 1. Debit Accounts Receivable (Asset increases)
     // Customer now owes us money
     entries.push({
-      accountCode: '1100', // Accounts Receivable
+      accountCode: '1200', // Accounts Receivable
       type: 'DEBIT',
       amount: invoice.totalAmount,
       description: `A/R - Invoice ${invoice.invoiceNumber} (${invoice.customer?.name || 'Customer'})`
@@ -275,9 +275,9 @@ export class JournalEntryEngine {
 
     // 1. Debit Cash/Bank Account (Asset increases)
     // We receive money from customer
-    const accountCode = payment.paymentMethodId ? '1010' : '1000'; // Bank vs Cash
+    const accountCode = payment.paymentMethodId ? '1100' : '1100'; // Cash and Cash Equivalents
     entries.push({
-      accountCode, // Cash (1000) or Bank (1010)
+      accountCode, // Cash and Cash Equivalents (1100)
       type: 'DEBIT',
       amount: payment.amount,
       description: `Payment received - ${payment.reference} ${invoice ? `(Invoice ${invoice.invoiceNumber})` : ''}`
@@ -286,7 +286,7 @@ export class JournalEntryEngine {
     // 2. Credit Accounts Receivable (Asset decreases)
     // Customer debt is reduced
     entries.push({
-      accountCode: '1100', // Accounts Receivable
+      accountCode: '1200', // Accounts Receivable
       type: 'CREDIT',
       amount: payment.amount,
       description: `A/R reduction - ${payment.reference} ${invoice ? `(Invoice ${invoice.invoiceNumber})` : ''}`

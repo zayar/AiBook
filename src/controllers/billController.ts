@@ -291,6 +291,27 @@ export class BillController {
         const accountingService = new AccountingService({ tenantId });
 
         for (const item of calculatedItems) {
+          // Auto-link inventory item if not provided but description matches
+          let inventoryItemId = item.inventoryItemId;
+          if (!inventoryItemId && item.description) {
+            const matchingInventoryItem = await tx.inventoryItem.findFirst({
+              where: {
+                tenantId,
+                OR: [
+                  { name: { equals: item.description } },
+                  { name: { contains: item.description } },
+                  { sku: { equals: item.description } },
+                  { sku: { contains: item.description } }
+                ]
+              }
+            });
+            
+            if (matchingInventoryItem) {
+              inventoryItemId = matchingInventoryItem.id;
+              console.log(`🔗 Auto-linked bill item "${item.description}" to inventory item: ${matchingInventoryItem.name} (${matchingInventoryItem.sku})`);
+            }
+          }
+
           // Create bill item
           const billItem = await tx.billItem.create({
             data: {
@@ -301,7 +322,7 @@ export class BillController {
               totalPrice: item.totalPrice,
               taxRate: item.taxRate,
               accountCode: item.accountCode || '6000', // Default to Office Expenses
-              inventoryItemId: item.inventoryItemId,
+              inventoryItemId: inventoryItemId,
               tenantId
             }
           });
@@ -309,12 +330,12 @@ export class BillController {
           billItems.push(billItem);
 
           // If this is an inventory item, create cost layer for FIFO tracking
-          if (item.inventoryItemId) {
+          if (inventoryItemId) {
             try {
-              console.log(`🔄 Creating cost layer for inventory item: ${item.inventoryItemId}`);
+              console.log(`🔄 Creating cost layer for inventory item: ${inventoryItemId}`);
               
               await accountingService.recordInventoryPurchase({
-                inventoryItemId: item.inventoryItemId,
+                inventoryItemId: inventoryItemId,
                 quantity: item.quantity,
                 unitCost: item.unitPrice,
                 purchaseDate: bill.billDate,
@@ -324,7 +345,7 @@ export class BillController {
 
               console.log(`✅ Cost layer created for ${item.quantity} units at $${item.unitPrice} each`);
             } catch (error) {
-              console.error(`❌ Error creating cost layer for item ${item.inventoryItemId}:`, error);
+              console.error(`❌ Error creating cost layer for item ${inventoryItemId}:`, error);
               // Don't fail the entire transaction, but log the error
               // In production, you might want to handle this differently
             }

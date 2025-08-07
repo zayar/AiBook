@@ -150,15 +150,15 @@ export class AuditTrailEngine {
         entityId: auditLog.entityId,
         action: auditLog.action as AuditAction,
         userId: auditLog.userId,
-        userEmail: auditLog.userEmail,
+        userEmail: auditLog.userEmail || undefined,
         timestamp: auditLog.timestamp,
         oldValues: auditLog.oldValues ? JSON.parse(auditLog.oldValues) : undefined,
         newValues: auditLog.newValues ? JSON.parse(auditLog.newValues) : undefined,
         changes: auditLog.changes ? JSON.parse(auditLog.changes) : undefined,
-        ipAddress: auditLog.ipAddress,
-        userAgent: auditLog.userAgent,
-        sessionId: auditLog.sessionId,
-        reason: auditLog.reason,
+        ipAddress: auditLog.ipAddress || undefined,
+        userAgent: auditLog.userAgent || undefined,
+        sessionId: auditLog.sessionId || undefined,
+        reason: auditLog.reason || undefined,
         tenantId: auditLog.tenantId
       };
 
@@ -270,15 +270,15 @@ export class AuditTrailEngine {
         entityId: log.entityId,
         action: log.action as AuditAction,
         userId: log.userId,
-        userEmail: log.userEmail,
+        userEmail: log.userEmail || undefined,
         timestamp: log.timestamp,
         oldValues: log.oldValues ? JSON.parse(log.oldValues) : undefined,
         newValues: log.newValues ? JSON.parse(log.newValues) : undefined,
         changes: log.changes ? JSON.parse(log.changes) : undefined,
-        ipAddress: log.ipAddress,
-        userAgent: log.userAgent,
-        sessionId: log.sessionId,
-        reason: log.reason,
+        ipAddress: log.ipAddress || undefined,
+        userAgent: log.userAgent || undefined,
+        sessionId: log.sessionId || undefined,
+        reason: log.reason || undefined,
         tenantId: log.tenantId
       }));
 
@@ -348,15 +348,15 @@ export class AuditTrailEngine {
           entityId: log.entityId,
           action: log.action as AuditAction,
           userId: log.userId,
-          userEmail: log.userEmail,
+          userEmail: log.userEmail || undefined,
           timestamp: log.timestamp,
           oldValues: log.oldValues ? JSON.parse(log.oldValues) : undefined,
           newValues: log.newValues ? JSON.parse(log.newValues) : undefined,
           changes: log.changes ? JSON.parse(log.changes) : undefined,
-          ipAddress: log.ipAddress,
-          userAgent: log.userAgent,
-          sessionId: log.sessionId,
-          reason: log.reason,
+          ipAddress: log.ipAddress || undefined,
+          userAgent: log.userAgent || undefined,
+          sessionId: log.sessionId || undefined,
+          reason: log.reason || undefined,
           tenantId: log.tenantId
         }));
 
@@ -431,7 +431,7 @@ export class AuditTrailEngine {
     });
 
     userActionTimes.forEach((times, userId) => {
-      times.sort((a, b) => a.getTime() - b.getTime());
+      times.sort((a: Date, b: Date) => a.getTime() - b.getTime());
       let rapidActions = 0;
       
       for (let i = 1; i < times.length; i++) {
@@ -516,7 +516,7 @@ export class AuditTrailEngine {
 
     } catch (error) {
       console.error('Error performing integrity checks:', error);
-      details.push(`Error during integrity checks: ${error.message}`);
+      details.push(`Error during integrity checks: ${error instanceof Error ? error.message : 'Unknown error'}`);
       issuesFound++;
     }
 

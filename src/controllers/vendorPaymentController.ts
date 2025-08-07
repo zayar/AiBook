@@ -11,7 +11,8 @@ const CreateVendorPaymentSchema = z.object({
   bankCharges: z.number().default(0),
   paymentDate: z.string().optional(),
   paymentMode: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_PAYMENT', 'OTHER']).default('CASH'),
-  paidThroughId: z.string().min(1, 'Payment account is required'),
+  paidThroughId: z.string().optional(), // Keep for backward compatibility
+  paidThroughAccountId: z.string().optional(), // NEW: Chart of Accounts integration
   referenceNumber: z.string().optional(),
   taxDeducted: z.boolean().default(false),
   taxAmount: z.number().default(0),
@@ -22,9 +23,30 @@ const CreateVendorPaymentSchema = z.object({
     amount: z.number().positive()
   })).optional(),
   branch: z.string().optional(),
+}).refine(data => data.paidThroughId || data.paidThroughAccountId, {
+  message: "Either paidThroughId or paidThroughAccountId must be provided",
+  path: ["paidThroughAccountId"]
 });
 
-const UpdateVendorPaymentSchema = CreateVendorPaymentSchema.partial();
+const UpdateVendorPaymentSchema = z.object({
+  vendorId: z.string().min(1, 'Vendor is required').optional(),
+  amount: z.number().positive('Amount must be positive').optional(),
+  bankCharges: z.number().default(0).optional(),
+  paymentDate: z.string().optional(),
+  paymentMode: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_PAYMENT', 'OTHER']).optional(),
+  paidThroughId: z.string().optional(),
+  paidThroughAccountId: z.string().optional(),
+  referenceNumber: z.string().optional(),
+  taxDeducted: z.boolean().optional(),
+  taxAmount: z.number().optional(),
+  notes: z.string().optional(),
+  internalNotes: z.string().optional(),
+  billPayments: z.array(z.object({
+    billId: z.string(),
+    amount: z.number().positive()
+  })).optional(),
+  branch: z.string().optional(),
+});
 
 const VendorPaymentListSchema = z.object({
   page: z.string().optional().transform(val => val ? parseInt(val) : 1),
@@ -83,6 +105,9 @@ export const listVendorPayments = async (req: Request, res: Response) => {
           },
           paidThrough: {
             select: { id: true, accountNumber: true, name: true, type: true }
+          },
+          paidThroughAccount: {
+            select: { id: true, code: true, name: true, type: true }
           },
           billPayments: {
             include: {
@@ -270,7 +295,7 @@ export const createVendorPayment = async (req: Request, res: Response) => {
     const accountsPayableAccount = await prisma.account.findFirst({
       where: {
         tenantId,
-        type: 'LIABILITY',
+        type: 'ACCOUNTS_PAYABLE',
         name: { contains: 'Accounts Payable' }
       }
     });
@@ -294,6 +319,7 @@ export const createVendorPayment = async (req: Request, res: Response) => {
           paymentDate: validatedData.paymentDate ? new Date(validatedData.paymentDate) : new Date(),
           paymentMode: validatedData.paymentMode,
           paidThroughId: validatedData.paidThroughId,
+          paidThroughAccountId: validatedData.paidThroughAccountId, // NEW: Chart of Accounts integration
           referenceNumber: validatedData.referenceNumber,
           taxDeducted: validatedData.taxDeducted,
           notes: validatedData.notes,
@@ -414,7 +440,7 @@ export const createVendorPayment = async (req: Request, res: Response) => {
         const taxAccount = await tx.account.findFirst({
           where: {
             tenantId,
-            type: 'ASSET',
+            type: 'OTHER_ASSET',
             OR: [
               { name: { contains: 'Tax Deducted' } },
               { name: { contains: 'TDS' } },
@@ -786,6 +812,59 @@ export const getVendorPendingBills = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error getting vendor pending bills:', error);
     res.status(500).json({ error: 'Failed to get vendor pending bills' });
+  }
+};
+
+/**
+ * 🏦 GET ELIGIBLE PAID THROUGH ACCOUNTS
+ * Returns accounts that can be used for "Paid Through" in vendor payments
+ */
+export const getPaidThroughAccounts = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.tenant!;
+
+    // Get accounts that are suitable for payments: CASH, BANK, OTHER_CURRENT_LIABILITY, EQUITY
+    const accounts = await prisma.account.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        type: {
+          in: [
+            'CASH',
+            'BANK', 
+            'OTHER_CURRENT_LIABILITY',
+            'OTHER_LIABILITY',
+            'EQUITY',
+            'OTHER_CURRENT_ASSET'
+          ]
+        }
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        type: true,
+        currency: true,
+        balance: true,
+        description: true
+      },
+      orderBy: [
+        { type: 'asc' },
+        { code: 'asc' }
+      ]
+    });
+
+    res.json({
+      success: true,
+      accounts
+    });
+  } catch (error) {
+    console.error('Error fetching paid through accounts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch paid through accounts',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };
 

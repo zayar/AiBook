@@ -9,7 +9,7 @@ export class AuditTrailController {
   static async searchAuditTrail(req: Request, res: Response): Promise<void> {
     try {
       const { tenantId } = req.tenant!;
-      const userId = req.user?.id || 'system';
+      const userId = req.user?.uid || 'system';
       const userEmail = req.user?.email;
       
       const {
@@ -86,7 +86,7 @@ export class AuditTrailController {
   static async generateComplianceReport(req: Request, res: Response): Promise<void> {
     try {
       const { tenantId } = req.tenant!;
-      const userId = req.user?.id || 'system';
+      const userId = req.user?.uid || 'system';
       const userEmail = req.user?.email;
       
       const { startDate, endDate } = req.query;
@@ -143,7 +143,7 @@ export class AuditTrailController {
   static async exportAuditTrail(req: Request, res: Response): Promise<void> {
     try {
       const { tenantId } = req.tenant!;
-      const userId = req.user?.id || 'system';
+      const userId = req.user?.uid || 'system';
       const userEmail = req.user?.email;
       
       const {

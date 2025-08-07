@@ -54,43 +54,225 @@ export interface AccountHierarchy {
 
 /**
  * ⚖️ ACCOUNT CATEGORIES
- * Standard account categories with their properties
+ * Account categories with their properties for new account sub-types
  */
 export const ACCOUNT_CATEGORIES = {
-  ASSET: {
+  // Asset sub-types
+  OTHER_ASSET: {
     normalBalance: 'DEBIT' as const,
     increaseOn: 'DEBIT' as const,
     decreaseOn: 'CREDIT' as const,
     statementType: 'BALANCE_SHEET' as const,
-    section: 'ASSETS' as const
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
   },
-  LIABILITY: {
+  OTHER_CURRENT_ASSET: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  CASH: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  BANK: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  FIXED_ASSET: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  ACCOUNTS_RECEIVABLE: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  STOCK: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  PAYMENT_CLEARING_ACCOUNT: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  INPUT_TAX: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  INTANGIBLE_ASSET: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  NON_CURRENT_ASSET: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+  DEFERRED_TAX_ASSET: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'ASSETS' as const,
+    category: 'ASSET' as const
+  },
+
+  // Liability sub-types
+  OTHER_CURRENT_LIABILITY: {
     normalBalance: 'CREDIT' as const,
     increaseOn: 'CREDIT' as const,
     decreaseOn: 'DEBIT' as const,
     statementType: 'BALANCE_SHEET' as const,
-    section: 'LIABILITIES' as const
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
   },
+  CREDIT_CARD: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
+  },
+  NON_CURRENT_LIABILITY: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
+  },
+  OTHER_LIABILITY: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
+  },
+  ACCOUNTS_PAYABLE: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
+  },
+  OVERSEAS_TAX_PAYABLE: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
+  },
+  OUTPUT_TAX: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
+  },
+  DEFERRED_TAX_LIABILITY: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'BALANCE_SHEET' as const,
+    section: 'LIABILITIES' as const,
+    category: 'LIABILITY' as const
+  },
+
+  // Equity sub-types
   EQUITY: {
     normalBalance: 'CREDIT' as const,
     increaseOn: 'CREDIT' as const,
     decreaseOn: 'DEBIT' as const,
     statementType: 'BALANCE_SHEET' as const,
-    section: 'EQUITY' as const
+    section: 'EQUITY' as const,
+    category: 'EQUITY' as const
   },
-  REVENUE: {
+
+  // Income sub-types (formerly Revenue)
+  INCOME: {
     normalBalance: 'CREDIT' as const,
     increaseOn: 'CREDIT' as const,
     decreaseOn: 'DEBIT' as const,
     statementType: 'INCOME_STATEMENT' as const,
-    section: 'REVENUE' as const
+    section: 'REVENUE' as const,
+    category: 'INCOME' as const
   },
+  OTHER_INCOME: {
+    normalBalance: 'CREDIT' as const,
+    increaseOn: 'CREDIT' as const,
+    decreaseOn: 'DEBIT' as const,
+    statementType: 'INCOME_STATEMENT' as const,
+    section: 'REVENUE' as const,
+    category: 'INCOME' as const
+  },
+
+  // Expense sub-types
   EXPENSE: {
     normalBalance: 'DEBIT' as const,
     increaseOn: 'DEBIT' as const,
     decreaseOn: 'CREDIT' as const,
     statementType: 'INCOME_STATEMENT' as const,
-    section: 'EXPENSES' as const
+    section: 'EXPENSES' as const,
+    category: 'EXPENSE' as const
+  },
+  COST_OF_GOODS_SOLD: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'INCOME_STATEMENT' as const,
+    section: 'EXPENSES' as const,
+    category: 'EXPENSE' as const
+  },
+  OTHER_EXPENSE: {
+    normalBalance: 'DEBIT' as const,
+    increaseOn: 'DEBIT' as const,
+    decreaseOn: 'CREDIT' as const,
+    statementType: 'INCOME_STATEMENT' as const,
+    section: 'EXPENSES' as const,
+    category: 'EXPENSE' as const
   }
 } as const;
 
@@ -119,7 +301,8 @@ export class AccountUtils {
    * Calculate the display balance (always positive for assets, expenses)
    */
   static getDisplayBalance(accountType: AccountType, netBalance: number): number {
-    if (['ASSET', 'EXPENSE'].includes(accountType)) {
+    const category = ACCOUNT_CATEGORIES[accountType]?.category;
+    if (['ASSET', 'EXPENSE'].includes(category || '')) {
       return Math.abs(netBalance);
     }
     return Math.abs(netBalance);
@@ -179,8 +362,9 @@ export class AccountUtils {
    */
   static suggestAccountCodes(accountType: AccountType, description?: string): string[] {
     const suggestions: string[] = [];
+    const category = ACCOUNT_CATEGORIES[accountType]?.category;
     
-    switch (accountType) {
+    switch (category) {
       case 'ASSET':
         suggestions.push('1100', '1110', '1120', '1130'); // Current assets
         break;
@@ -190,8 +374,8 @@ export class AccountUtils {
       case 'EQUITY':
         suggestions.push('3100', '3200', '3300'); // Equity accounts
         break;
-      case 'REVENUE':
-        suggestions.push('4100', '4110', '4120'); // Revenue accounts
+      case 'INCOME':
+        suggestions.push('4100', '4110', '4120'); // Income accounts
         break;
       case 'EXPENSE':
         suggestions.push('6100', '6200', '6300', '6400'); // Operating expenses

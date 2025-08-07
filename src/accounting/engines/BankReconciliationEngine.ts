@@ -125,11 +125,11 @@ export class BankReconciliationEngine {
           statementId: t.statementId,
           transactionDate: t.transactionDate,
           description: t.description,
-          reference: t.reference,
+          reference: t.reference || undefined,
           amount: Number(t.amount),
           type: t.type as 'DEPOSIT' | 'WITHDRAWAL',
           isMatched: t.isMatched,
-          matchedTransactionId: t.matchedTransactionId,
+          matchedTransactionId: t.matchedTransactionId || undefined,
           tenantId: t.tenantId
         })),
         tenantId: statement.tenantId
@@ -468,7 +468,7 @@ export class BankReconciliationEngine {
       description: txn.description,
       amount: Number(txn.amount),
       transactionDate: txn.transactionDate,
-      reference: txn.reference,
+      reference: txn.reference || undefined,
       isResolved: false
     }));
   }

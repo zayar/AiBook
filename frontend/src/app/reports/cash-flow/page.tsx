@@ -5,37 +5,45 @@ import { useRouter } from 'next/navigation';
 import { ReportsAPI, ReportParams } from '../../../lib/reports-api';
 
 interface CashFlowData {
-  summary: {
+  success: boolean;
+  statement: {
+    operatingActivities: {
+      items: Array<{
+        date: string;
+        description: string;
+        amount: number;
+        accountName: string;
+      }>;
+      total: number;
+    };
+    investingActivities: {
+      items: Array<{
+        date: string;
+        description: string;
+        amount: number;
+        accountName: string;
+      }>;
+      total: number;
+    };
+    financingActivities: {
+      items: Array<{
+        date: string;
+        description: string;
+        amount: number;
+        accountName: string;
+      }>;
+      total: number;
+    };
     netCashFlow: number;
     beginningCash: number;
     endingCash: number;
-    operatingCashFlow: number;
-    investingCashFlow: number;
-    financingCashFlow: number;
   };
-  operating: {
-    activities: Array<{
-      description: string;
-      amount: number;
-      type: 'inflow' | 'outflow';
-    }>;
-    netAmount: number;
-  };
-  investing: {
-    activities: Array<{
-      description: string;
-      amount: number;
-      type: 'inflow' | 'outflow';
-    }>;
-    netAmount: number;
-  };
-  financing: {
-    activities: Array<{
-      description: string;
-      amount: number;
-      type: 'inflow' | 'outflow';
-    }>;
-    netAmount: number;
+  summary: {
+    netOperatingCashFlow: number;
+    netInvestingCashFlow: number;
+    netFinancingCashFlow: number;
+    netCashFlow: number;
+    totalTransactions: number;
   };
 }
 
@@ -88,7 +96,7 @@ export default function CashFlowPage() {
 
   const renderActivitySection = (
     title: string,
-    activities: Array<{ description: string; amount: number; type: 'inflow' | 'outflow' }>,
+    activities: Array<{ date: string; description: string; amount: number; accountName: string }>,
     netAmount: number,
     bgColor: string,
     textColor: string
@@ -103,7 +111,13 @@ export default function CashFlowPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Date
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Description
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Account
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Amount
@@ -113,20 +127,26 @@ export default function CashFlowPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {activities.length === 0 ? (
               <tr>
-                <td colSpan={2} className="px-6 py-4 text-center text-gray-500">
+                <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
                   No activities for selected period
                 </td>
               </tr>
             ) : (
               activities.map((activity, index) => (
                 <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {ReportsAPI.formatDate(activity.date)}
+                  </td>
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">
                       {activity.description}
                     </div>
                   </td>
-                  <td className={`px-6 py-4 text-right font-medium ${activity.type === 'inflow' ? 'text-green-600' : 'text-red-600'}`}>
-                    {activity.type === 'outflow' ? '-' : ''}{ReportsAPI.formatCurrency(activity.amount)}
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    {activity.accountName}
+                  </td>
+                  <td className={`px-6 py-4 text-right font-medium ${activity.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {ReportsAPI.formatCurrency(Math.abs(activity.amount))}
                   </td>
                 </tr>
               ))
@@ -134,7 +154,7 @@ export default function CashFlowPage() {
           </tbody>
           <tfoot className={bgColor}>
             <tr className="border-t-2 border-gray-300">
-              <td className="px-6 py-3 font-bold text-gray-800">
+              <td colSpan={3} className="px-6 py-3 font-bold text-gray-800">
                 NET {title.toUpperCase()}
               </td>
               <td className={`px-6 py-3 text-right font-bold ${netAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -283,28 +303,28 @@ export default function CashFlowPage() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-blue-600">
-                    {ReportsAPI.formatCurrency(reportData.summary.beginningCash)}
+                    {ReportsAPI.formatCurrency(reportData.statement.beginningCash)}
                   </div>
                   <div className="text-sm text-gray-600">Beginning Cash</div>
                 </div>
                 
                 <div className="text-center">
-                  <div className={`text-3xl font-bold ${reportData.summary.netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {ReportsAPI.formatCurrency(reportData.summary.netCashFlow)}
+                  <div className={`text-3xl font-bold ${reportData.statement.netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {ReportsAPI.formatCurrency(reportData.statement.netCashFlow)}
                   </div>
                   <div className="text-sm text-gray-600">Net Cash Flow</div>
                 </div>
                 
                 <div className="text-center">
                   <div className="text-3xl font-bold text-purple-600">
-                    {ReportsAPI.formatCurrency(reportData.summary.endingCash)}
+                    {ReportsAPI.formatCurrency(reportData.statement.endingCash)}
                   </div>
                   <div className="text-sm text-gray-600">Ending Cash</div>
                 </div>
                 
                 <div className="text-center">
                   <div className="text-3xl font-bold text-orange-600">
-                    {ReportsAPI.formatCurrency(reportData.summary.operatingCashFlow)}
+                    {ReportsAPI.formatCurrency(reportData.summary.netOperatingCashFlow)}
                   </div>
                   <div className="text-sm text-gray-600">Operating Cash Flow</div>
                 </div>
@@ -314,8 +334,8 @@ export default function CashFlowPage() {
             {/* Operating Activities */}
             {renderActivitySection(
               'Operating Activities',
-              reportData.operating.activities,
-              reportData.operating.netAmount,
+              reportData.statement.operatingActivities.items,
+              reportData.statement.operatingActivities.total,
               'bg-blue-50',
               'text-blue-800'
             )}
@@ -323,8 +343,8 @@ export default function CashFlowPage() {
             {/* Investing Activities */}
             {renderActivitySection(
               'Investing Activities',
-              reportData.investing.activities,
-              reportData.investing.netAmount,
+              reportData.statement.investingActivities.items,
+              reportData.statement.investingActivities.total,
               'bg-green-50',
               'text-green-800'
             )}
@@ -332,8 +352,8 @@ export default function CashFlowPage() {
             {/* Financing Activities */}
             {renderActivitySection(
               'Financing Activities',
-              reportData.financing.activities,
-              reportData.financing.netAmount,
+              reportData.statement.financingActivities.items,
+              reportData.statement.financingActivities.total,
               'bg-purple-50',
               'text-purple-800'
             )}
@@ -346,35 +366,35 @@ export default function CashFlowPage() {
                 <div className="flex justify-between items-center py-2 border-b border-gray-200">
                   <span className="font-medium text-gray-700">Beginning Cash Balance</span>
                   <span className="font-semibold text-gray-900">
-                    {ReportsAPI.formatCurrency(reportData.summary.beginningCash)}
+                    {ReportsAPI.formatCurrency(reportData.statement.beginningCash)}
                   </span>
                 </div>
                 
                 <div className="flex justify-between items-center py-2 border-b border-gray-200">
                   <span className="font-medium text-gray-700">Net Operating Cash Flow</span>
-                  <span className={`font-semibold ${reportData.summary.operatingCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {ReportsAPI.formatCurrency(reportData.summary.operatingCashFlow)}
+                  <span className={`font-semibold ${reportData.summary.netOperatingCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {ReportsAPI.formatCurrency(reportData.summary.netOperatingCashFlow)}
                   </span>
                 </div>
                 
                 <div className="flex justify-between items-center py-2 border-b border-gray-200">
                   <span className="font-medium text-gray-700">Net Investing Cash Flow</span>
-                  <span className={`font-semibold ${reportData.summary.investingCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {ReportsAPI.formatCurrency(reportData.summary.investingCashFlow)}
+                  <span className={`font-semibold ${reportData.summary.netInvestingCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {ReportsAPI.formatCurrency(reportData.summary.netInvestingCashFlow)}
                   </span>
                 </div>
                 
                 <div className="flex justify-between items-center py-2 border-b border-gray-200">
                   <span className="font-medium text-gray-700">Net Financing Cash Flow</span>
-                  <span className={`font-semibold ${reportData.summary.financingCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {ReportsAPI.formatCurrency(reportData.summary.financingCashFlow)}
+                  <span className={`font-semibold ${reportData.summary.netFinancingCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {ReportsAPI.formatCurrency(reportData.summary.netFinancingCashFlow)}
                   </span>
                 </div>
                 
                 <div className="flex justify-between items-center py-3 border-t-2 border-gray-300">
                   <span className="font-bold text-gray-900">Ending Cash Balance</span>
                   <span className="font-bold text-gray-900">
-                    {ReportsAPI.formatCurrency(reportData.summary.endingCash)}
+                    {ReportsAPI.formatCurrency(reportData.statement.endingCash)}
                   </span>
                 </div>
               </div>
