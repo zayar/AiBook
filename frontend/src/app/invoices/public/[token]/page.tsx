@@ -187,7 +187,7 @@ export default function PublicInvoicePage() {
         <div className="bg-white rounded-lg shadow-lg overflow-hidden print:shadow-none print:rounded-none">
           <InvoiceViewer 
             invoice={invoice} 
-            embedded={false}
+            embedded={true}
             className="print:p-0"
           />
         </div>
