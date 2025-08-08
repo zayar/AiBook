@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import InvoiceViewer from '@/components/InvoiceViewer';
-import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
+import InvoiceShareLoading from '@/components/InvoiceShareLoading';
 import { Download, FileText, AlertTriangle } from 'lucide-react';
 
 // Types
@@ -85,10 +85,8 @@ export default function PublicInvoicePage() {
       const data = await response.json();
       const invoiceData = data.invoice;
       
-      // Calculate paidAmount from payments if available
       const paidAmount = invoiceData.payments?.reduce((sum: number, payment: any) => sum + payment.amount, 0) || 0;
       
-      // Map the data to match InvoiceViewer expectations
       setInvoice({
         ...invoiceData,
         paidAmount
@@ -110,7 +108,7 @@ export default function PublicInvoicePage() {
   };
 
   if (loading) {
-    return <UltraEnhancedLoading />;
+    return <InvoiceShareLoading />;
   }
 
   if (error) {
