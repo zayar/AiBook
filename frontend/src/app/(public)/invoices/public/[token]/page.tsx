@@ -142,7 +142,7 @@ export default function PublicInvoicePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 antialiased">
       {/* Header */}
       <div className="bg-white border-b print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
