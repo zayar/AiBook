@@ -510,6 +510,116 @@ class InvoiceController {
   }
 
   /**
+   * 🔗 CREATE/REFRESH SHARE LINK
+   */
+  static async createOrRefreshShareLink(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      const { id } = req.params;
+      const { expiresInDays = 30 } = req.body || {};
+
+      if (!tenantId) {
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId }, select: { id: true } });
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+
+      // Generate a simple URL-safe token
+      const token = (await import('crypto')).randomBytes(16).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + Number(expiresInDays));
+
+      const updated = await prisma.invoice.update({
+        where: { id },
+        data: { shareToken: token, shareExpiresAt: expiresAt }
+      });
+
+      res.json({
+        message: 'Share link generated',
+        token,
+        expiresAt,
+        publicUrl: `${req.protocol}://${req.get('host')}/api/v1/invoices/public/${token}`
+      });
+    } catch (error) {
+      console.error('Create share link error:', error);
+      res.status(500).json({ error: 'Failed to create share link' });
+    }
+  }
+
+  /**
+   * 🌐 GET INVOICE BY SHARE TOKEN (NO AUTH)
+   */
+  static async getInvoiceByShareToken(req: Request, res: Response): Promise<void> {
+    try {
+      const { token } = req.params as { token: string };
+      if (!token) {
+        res.status(400).json({ error: 'Token is required' });
+        return;
+      }
+
+      const invoice = await prisma.invoice.findFirst({
+        where: { shareToken: token },
+        include: {
+          customer: true,
+          items: { include: { inventoryItem: true } },
+          payments: true
+        }
+      });
+
+      if (!invoice) {
+        res.status(404).json({ error: 'Invalid or expired link' });
+        return;
+      }
+
+      if (invoice.shareExpiresAt && invoice.shareExpiresAt < new Date()) {
+        res.status(410).json({ error: 'Share link expired' });
+        return;
+      }
+
+      res.json({ invoice });
+    } catch (error) {
+      console.error('Get invoice by token error:', error);
+      res.status(500).json({ error: 'Failed to load shared invoice' });
+    }
+  }
+
+  /**
+   * 🎨 SAVE INVOICE DESIGN SETTINGS
+   */
+  static async saveInvoiceDesign(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      const { id } = req.params;
+      const { design } = req.body || {};
+
+      if (!tenantId) {
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+      if (!design) {
+        res.status(400).json({ error: 'Design payload is required' });
+        return;
+      }
+
+      const invoice = await prisma.invoice.findFirst({ where: { id, tenantId }, select: { id: true } });
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+
+      await prisma.invoice.update({ where: { id }, data: { designSettings: design } });
+      res.json({ message: 'Design saved' });
+    } catch (error) {
+      console.error('Save invoice design error:', error);
+      res.status(500).json({ error: 'Failed to save design' });
+    }
+  }
+  /**
    * 💰 PROCESS PAYMENT
    * Record payment against an invoice with automatic reconciliation
    */

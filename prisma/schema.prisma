@@ -359,6 +359,10 @@ model Invoice {
   recurringInterval String?
   salesOrderId      String?
   metadata          Json?
+  // Public viewing and customization
+  shareToken        String?          @unique
+  shareExpiresAt    DateTime?
+  designSettings    Json?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   salespersonId     String?

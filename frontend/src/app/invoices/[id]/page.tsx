@@ -10,6 +10,7 @@ import {
   Printer, 
   Copy,
   CreditCard,
+  Share2,
   Calendar,
   Clock,
   DollarSign,
@@ -116,6 +117,7 @@ export default function InvoiceDetailPage() {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [creatingShare, setCreatingShare] = useState(false);
 
   useEffect(() => {
     fetchInvoiceDetails();
@@ -249,6 +251,23 @@ export default function InvoiceDetailPage() {
     });
   };
 
+  const handleCustomize = () => {
+    router.push(`/invoices/${invoiceId}/customize`);
+  };
+
+  const handleCreateShare = async () => {
+    try {
+      setCreatingShare(true);
+      await InvoiceAPI.createShareLink(invoiceId, 30);
+      alert('Share link generated. You can copy it from the Customize page.');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to create share link');
+    } finally {
+      setCreatingShare(false);
+    }
+  };
+
   if (loading) {
     return <UltraEnhancedLoading />;
   }
@@ -305,6 +324,13 @@ export default function InvoiceDetailPage() {
               <Edit className="h-4 w-4" />
               <span>Edit</span>
             </button>
+
+            <button
+              onClick={handleCustomize}
+              className="inline-flex items-center space-x-2 px-4 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50"
+            >
+              <span>Customize</span>
+            </button>
             
             {invoice.status === 'DRAFT' && (
               <button 
@@ -319,6 +345,15 @@ export default function InvoiceDetailPage() {
             <button className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
               <Download className="h-4 w-4" />
               <span>Download</span>
+            </button>
+
+            <button
+              onClick={handleCreateShare}
+              disabled={creatingShare}
+              className="inline-flex items-center space-x-2 px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50"
+            >
+              <Share2 className="h-4 w-4" />
+              <span>{creatingShare ? 'Generating...' : 'Share Link'}</span>
             </button>
             
             {invoice.status !== 'PAID' && (

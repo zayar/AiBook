@@ -31,6 +31,9 @@ export interface Invoice {
   notes?: string;
   termsConditions?: string;
   items: InvoiceItem[];
+  designSettings?: any;
+  shareToken?: string;
+  shareExpiresAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -100,6 +103,30 @@ export class InvoiceAPI {
     });
 
     const response = await api.get(`/invoices?${params.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Create or refresh a public share link
+   */
+  static async createShareLink(id: string, expiresInDays: number = 30): Promise<{ token: string; publicUrl: string; expiresAt: string }>{
+    const response = await api.post(`/invoices/${id}/share`, { expiresInDays });
+    return response.data;
+  }
+
+  /**
+   * Get invoice via public token (no auth needed)
+   */
+  static async getInvoiceByToken(token: string): Promise<{ invoice: Invoice }>{
+    const response = await api.get(`/invoices/public/${token}`);
+    return response.data;
+  }
+
+  /**
+   * Save invoice customization design
+   */
+  static async saveDesign(id: string, design: any): Promise<{ message: string }>{
+    const response = await api.post(`/invoices/${id}/customize`, { design });
     return response.data;
   }
 

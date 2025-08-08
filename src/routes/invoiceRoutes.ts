@@ -110,6 +110,18 @@ router.post('/ai-suggestions', async (req, res) => {
 });
 
 /**
+ * 🔗 PUBLIC/SHAREABLE INVOICE ROUTES
+ */
+// Create or refresh a share link for an invoice
+router.post('/:id/share', (req, res) => InvoiceController.createOrRefreshShareLink(req, res));
+
+// Get invoice by public share token (no auth, tenant inferred from invoice)
+router.get('/public/:token', (req, res) => InvoiceController.getInvoiceByShareToken(req, res));
+
+// Save customization for invoice design settings
+router.post('/:id/customize', (req, res) => InvoiceController.saveInvoiceDesign(req, res));
+
+/**
  * 💰 PAYMENT MANAGEMENT
  */
 // Record payment against an invoice
