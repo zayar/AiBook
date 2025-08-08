@@ -109,7 +109,7 @@ app.use(errorHandler);
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 AiBook server running on port ${PORT}`);
+  console.log(`🚀 Cashflow Copilot server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🏢 Multi-tenancy: Enhanced mode enabled`);
   console.log(`🏥 Health check: http://localhost:${PORT}/health`);

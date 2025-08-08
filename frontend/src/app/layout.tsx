@@ -13,20 +13,20 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'AiBook - AI-First Bookkeeping SaaS',
+  title: 'Cashflow Copilot - AI-First Bookkeeping SaaS',
   description: 'Revolutionary AI-powered bookkeeping system with intelligent transaction categorization, predictive analytics, and multi-tenant support.',
   keywords: 'AI bookkeeping, accounting software, financial management, transaction categorization, predictive analytics',
-  authors: [{ name: 'AiBook Team' }],
+  authors: [{ name: 'Cashflow Copilot Team' }],
   robots: 'index, follow',
   openGraph: {
-    title: 'AiBook - AI-First Bookkeeping SaaS',
+    title: 'Cashflow Copilot - AI-First Bookkeeping SaaS',
     description: 'Revolutionary AI-powered bookkeeping system with intelligent transaction categorization and predictive analytics',
     type: 'website',
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AiBook - AI-First Bookkeeping SaaS',
+    title: 'Cashflow Copilot - AI-First Bookkeeping SaaS',
     description: 'Revolutionary AI-powered bookkeeping system',
   },
 }

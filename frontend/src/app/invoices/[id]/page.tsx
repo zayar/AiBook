@@ -5,15 +5,12 @@ import { useRouter, useParams } from 'next/navigation';
 import { 
   ArrowLeft, 
   Edit, 
-  Mail, 
   Download, 
   Printer, 
   Copy,
   CreditCard,
   Share2,
-  Calendar,
-  Clock,
-  DollarSign,
+  Mail,
   CheckCircle,
   AlertTriangle,
   FileText,
@@ -21,12 +18,11 @@ import {
   Phone,
   MapPin,
   Brain,
-  TrendingUp,
-  Users,
   Target,
-  Zap,
-  UserCheck
+  Zap
 } from 'lucide-react';
+import InvoiceViewer from '@/components/InvoiceViewer';
+import ShareInvoiceModal from '@/components/ShareInvoiceModal';
 import PaymentRecordModal from '@/components/PaymentRecordModal';
 import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
 import { InvoiceAPI } from '@/lib/invoice-api';
@@ -117,7 +113,8 @@ export default function InvoiceDetailPage() {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [creatingShare, setCreatingShare] = useState(false);
+  const [showViewer, setShowViewer] = useState(true);
+  const [showShare, setShowShare] = useState(false);
 
   useEffect(() => {
     fetchInvoiceDetails();
@@ -209,30 +206,7 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  const handleSendInvoice = async () => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${invoiceId}/send`, {
-        method: 'POST',
-        headers: { 
-          'X-Tenant-ID': 'default',
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        console.log('✅ Invoice sent successfully');
-        // Refresh the invoice details to show updated status
-        fetchInvoiceDetails();
-      } else {
-        const error = await response.json();
-        console.error('❌ Failed to send invoice:', error);
-        alert('Failed to send invoice: ' + (error.error || 'Unknown error'));
-      }
-    } catch (error) {
-      console.error('❌ Error sending invoice:', error);
-      alert('Error sending invoice. Please try again.');
-    }
-  };
+  // Removed send invoice per request
 
   const formatCurrency = (amount: number, currency: string = 'MMK') => {
     return new Intl.NumberFormat('en-US', {
@@ -251,21 +225,10 @@ export default function InvoiceDetailPage() {
     });
   };
 
-  const handleCustomize = () => {
-    router.push(`/invoices/${invoiceId}/customize`);
-  };
+  const handleCustomize = () => router.push(`/invoices/${invoiceId}/customize`);
 
-  const handleCreateShare = async () => {
-    try {
-      setCreatingShare(true);
-      await InvoiceAPI.createShareLink(invoiceId, 30);
-      alert('Share link generated. You can copy it from the Customize page.');
-    } catch (e) {
-      console.error(e);
-      alert('Failed to create share link');
-    } finally {
-      setCreatingShare(false);
-    }
+  const handleCreateShare = () => {
+    setShowShare(true);
   };
 
   if (loading) {
@@ -316,7 +279,7 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
           
-          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3">
             <button
               onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
               className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
@@ -325,22 +288,12 @@ export default function InvoiceDetailPage() {
               <span>Edit</span>
             </button>
 
-            <button
-              onClick={handleCustomize}
-              className="inline-flex items-center space-x-2 px-4 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50"
-            >
-              <span>Customize</span>
-            </button>
-            
-            {invoice.status === 'DRAFT' && (
-              <button 
-                onClick={handleSendInvoice}
-                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              <button
+                onClick={handleCustomize}
+                className="inline-flex items-center space-x-2 px-4 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50"
               >
-                <Mail className="h-4 w-4" />
-                <span>Send Invoice</span>
+                <span>Customize Template</span>
               </button>
-            )}
             
             <button className="inline-flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
               <Download className="h-4 w-4" />
@@ -349,11 +302,10 @@ export default function InvoiceDetailPage() {
 
             <button
               onClick={handleCreateShare}
-              disabled={creatingShare}
-              className="inline-flex items-center space-x-2 px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50"
+              className="inline-flex items-center space-x-2 px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors"
             >
               <Share2 className="h-4 w-4" />
-              <span>{creatingShare ? 'Generating...' : 'Share Link'}</span>
+              <span>Share</span>
             </button>
             
             {invoice.status !== 'PAID' && (
@@ -439,159 +391,23 @@ export default function InvoiceDetailPage() {
               </div>
             )}
 
-            {/* Invoice Details */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                {/* Bill To */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Bill To</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Building className="h-4 w-4 text-gray-400" />
-                      <span className="font-medium text-gray-900">{invoice.customer.name}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Mail className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">{invoice.customer.email}</span>
-                    </div>
-                    {invoice.customer.phone && (
-                      <div className="flex items-center space-x-2">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-600">{invoice.customer.phone}</span>
-                      </div>
-                    )}
-                    {invoice.customer.address && (
-                      <div className="flex items-start space-x-2">
-                        <MapPin className="h-4 w-4 text-gray-400 mt-0.5" />
-                        <div className="text-gray-600">
-                          <div>{invoice.customer.address.street}</div>
-                          <div>{invoice.customer.address.city}, {invoice.customer.address.state} {invoice.customer.address.zipCode}</div>
-                          <div>{invoice.customer.address.country}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Invoice Info */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Invoice Information</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Invoice Number:</span>
-                      <span className="font-medium">{invoice.invoiceNumber}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Issue Date:</span>
-                      <span className="font-medium">{formatDate(invoice.issueDate)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Due Date:</span>
-                      <span className="font-medium">{formatDate(invoice.dueDate)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Currency:</span>
-                      <span className="font-medium">{invoice.currency}</span>
-                    </div>
-                    {invoice.salesperson && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Salesperson:</span>
-                        <div className="text-right">
-                          <div className="font-medium">{invoice.salesperson.name}</div>
-                          {invoice.salesperson.position && (
-                            <div className="text-sm text-gray-500">{invoice.salesperson.position}</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Invoice Items */}
-              <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Invoice Items</h3>
-                
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 text-sm font-medium text-gray-600">Description</th>
-                        <th className="text-center py-3 text-sm font-medium text-gray-600">Qty</th>
-                        <th className="text-right py-3 text-sm font-medium text-gray-600">Unit Price</th>
-                        <th className="text-right py-3 text-sm font-medium text-gray-600">Tax</th>
-                        <th className="text-right py-3 text-sm font-medium text-gray-600">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {invoice.items.map(item => (
-                        <tr key={item.id}>
-                          <td className="py-4 text-sm text-gray-900">{item.description}</td>
-                          <td className="py-4 text-sm text-gray-600 text-center">{item.quantity}</td>
-                          <td className="py-4 text-sm text-gray-600 text-right">
-                            {formatCurrency(item.unitPrice, invoice.currency)}
-                          </td>
-                          <td className="py-4 text-sm text-gray-600 text-right">{item.taxRate}%</td>
-                          <td className="py-4 text-sm font-medium text-gray-900 text-right">
-                            {formatCurrency(item.totalPrice, invoice.currency)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Totals */}
-                <div className="mt-6 border-t border-gray-200 pt-4">
-                  <div className="space-y-2 max-w-xs ml-auto">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal:</span>
-                      <span className="font-medium">{formatCurrency(invoice.subtotal, invoice.currency)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Tax:</span>
-                      <span className="font-medium">{formatCurrency(invoice.taxAmount, invoice.currency)}</span>
-                    </div>
-                    <div className="flex justify-between text-lg font-semibold border-t border-gray-200 pt-2">
-                      <span>Total:</span>
-                      <span className="text-blue-600">{formatCurrency(invoice.totalAmount, invoice.currency)}</span>
-                    </div>
-                    {invoice.paidAmount > 0 && (
-                      <>
-                        <div className="flex justify-between text-sm text-green-600">
-                          <span>Paid:</span>
-                          <span className="font-medium">-{formatCurrency(invoice.paidAmount, invoice.currency)}</span>
-                        </div>
-                        <div className="flex justify-between text-lg font-semibold">
-                          <span>Balance Due:</span>
-                          <span className="text-orange-600">
-                            {formatCurrency(invoice.totalAmount - invoice.paidAmount, invoice.currency)}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Notes and Terms */}
-              {(invoice.notes || invoice.termsConditions) && (
-                <div className="border-t border-gray-200 pt-6 mt-6">
-                  {invoice.notes && (
-                    <div className="mb-4">
-                      <h4 className="font-medium text-gray-900 mb-2">Notes</h4>
-                      <p className="text-gray-600 text-sm">{invoice.notes}</p>
-                    </div>
-                  )}
-                  {invoice.termsConditions && (
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-2">Terms & Conditions</h4>
-                      <p className="text-gray-600 text-sm">{invoice.termsConditions}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Embedded invoice frame replacing original bill to/items section */}
+            <InvoiceViewer
+              embedded
+              visible
+              invoice={{
+                invoiceNumber: invoice.invoiceNumber,
+                issueDate: invoice.issueDate,
+                dueDate: invoice.dueDate,
+                currency: invoice.currency,
+                subtotal: invoice.subtotal,
+                taxAmount: invoice.taxAmount,
+                totalAmount: invoice.totalAmount,
+                paidAmount: invoice.paidAmount,
+                customer: invoice.customer,
+                items: invoice.items,
+              }}
+            />
           </div>
 
           {/* Sidebar */}
@@ -764,6 +580,13 @@ export default function InvoiceDetailPage() {
           }}
         />
       )}
+
+      {/* Share Link Modal */}
+      {invoice && (
+        <ShareInvoiceModal isOpen={showShare} onClose={()=>setShowShare(false)} invoiceId={invoice.id} />
+      )}
+
+      {/* Embedded viewer moved into the main content above */}
     </div>
   );
 } 

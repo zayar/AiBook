@@ -39,7 +39,7 @@ const router = Router();
 // API versioning and basic structure
 router.get('/', (req, res) => {
   res.json({
-    message: 'AiBook API v1 - AI-First Bookkeeping SaaS',
+    message: 'Cashflow Copilot API v1 - AI-First Bookkeeping SaaS',
     version: '1.0.0',
     user: req.user ? {
       uid: req.user.uid,

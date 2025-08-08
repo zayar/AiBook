@@ -17,7 +17,7 @@ export async function seedDatabase() {
     const tenant = await prisma.tenant.create({
       data: {
         id: 'default',
-        name: 'AiBook Demo Company',
+        name: 'Cashflow Copilot Demo Company',
         domain: 'demo.aibook.com',
         settings: {
           currency: 'USD',

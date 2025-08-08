@@ -149,7 +149,7 @@ export default function Navigation() {
                   <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                     <Brain className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-xl font-bold text-gray-900">AiBook</span>
+                  <span className="text-xl font-bold text-gray-900">Cashflow Copilot</span>
                 </div>
                 <button
                   onClick={() => setSidebarOpen(false)}
@@ -188,7 +188,7 @@ export default function Navigation() {
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
               <Brain className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-gray-900">AiBook</span>
+            <span className="text-xl font-bold text-gray-900">Cashflow Copilot</span>
           </div>
         </div>
         
@@ -234,7 +234,7 @@ export default function Navigation() {
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
               <Brain className="w-5 h-5 text-white" />
             </div>
-            <span className="text-lg font-bold text-gray-900">AiBook</span>
+            <span className="text-lg font-bold text-gray-900">Cashflow Copilot</span>
           </div>
           <div className="flex items-center gap-2">
             <button className="p-2 text-gray-400 hover:text-gray-600">

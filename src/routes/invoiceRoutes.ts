@@ -113,10 +113,117 @@ router.post('/ai-suggestions', async (req, res) => {
  * 🔗 PUBLIC/SHAREABLE INVOICE ROUTES
  */
 // Create or refresh a share link for an invoice
-router.post('/:id/share', (req, res) => InvoiceController.createOrRefreshShareLink(req, res));
+router.post('/:id/share', async (req, res) => {
+  try {
+    const tenantId = (req as any).tenant?.tenantId || 'default';
+    const { id } = req.params;
+    const { expiresInDays = 30 } = req.body || {};
+
+    // Check if invoice exists
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
+    
+    const invoice = await prisma.invoice.findFirst({ 
+      where: { id, tenantId }, 
+      select: { id: true } 
+    });
+    
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Generate a unique URL-safe token
+    const crypto = require('crypto');
+    let token = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      token = crypto.randomBytes(16).toString('hex');
+      const existing = await prisma.invoice.findFirst({ where: { shareToken: token } });
+      if (!existing) break;
+      if (attempt === 4) {
+        return res.status(500).json({ error: 'Failed to generate unique token' });
+      }
+    }
+    
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + Number(expiresInDays));
+
+    // Update invoice with share token
+    try {
+      await prisma.invoice.update({
+        where: { id },
+        data: { shareToken: token, shareExpiresAt: expiresAt }
+      });
+    } catch (dbError) {
+      console.warn('⚠️ Share token update failed:', dbError);
+      return res.status(500).json({ error: 'Failed to save share token' });
+    }
+
+    // Generate frontend URL instead of API URL
+    const frontendHost = req.get('host')?.includes('3000') ? req.get('host')?.replace('3000', '3001') : 'localhost:3001';
+    
+    res.json({
+      message: 'Share link generated',
+      token,
+      expiresAt,
+      publicUrl: `${req.protocol}://${frontendHost}/invoices/public/${token}`
+    });
+  } catch (error) {
+    console.error('Create share link error:', error);
+    res.status(500).json({ error: 'Failed to create share link' });
+  }
+});
 
 // Get invoice by public share token (no auth, tenant inferred from invoice)
-router.get('/public/:token', (req, res) => InvoiceController.getInvoiceByShareToken(req, res));
+router.get('/public/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
+
+    // Find invoice by share token
+    const invoice = await prisma.invoice.findFirst({
+      where: { shareToken: token },
+      include: {
+        customer: true,
+        items: { include: { inventoryItem: true } },
+        payments: true
+      }
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invalid or expired link' });
+    }
+
+    // Check if link has expired
+    if (invoice.shareExpiresAt && invoice.shareExpiresAt < new Date()) {
+      return res.status(410).json({ error: 'Share link expired' });
+    }
+
+    res.json({
+      invoice: {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        subtotal: invoice.subtotal,
+        taxAmount: invoice.taxAmount,
+        totalAmount: invoice.totalAmount,
+        currency: invoice.currency,
+        status: invoice.status,
+        customer: invoice.customer,
+        items: invoice.items,
+        payments: invoice.payments
+      }
+    });
+  } catch (error) {
+    console.error('Get invoice by share token error:', error);
+    res.status(500).json({ error: 'Failed to retrieve invoice' });
+  }
+});
 
 // Save customization for invoice design settings
 router.post('/:id/customize', (req, res) => InvoiceController.saveInvoiceDesign(req, res));

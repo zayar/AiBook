@@ -356,7 +356,7 @@ export class AIService {
 
       // Use OpenAI if available for better natural language processing
       if (this.openai) {
-        const systemPrompt = `You are an expert AI accounting assistant for AiBook, an advanced bookkeeping SaaS. 
+        const systemPrompt = `You are an expert AI accounting assistant for Cashflow Copilot, an advanced bookkeeping SaaS. 
         
 You have access to the user's financial data and can provide insights about:
 - Expense analysis and categorization
