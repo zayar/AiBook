@@ -115,6 +115,7 @@ export default function InvoiceDetailPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showViewer, setShowViewer] = useState(true);
   const [showShare, setShowShare] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   useEffect(() => {
     fetchInvoiceDetails();
@@ -231,6 +232,19 @@ export default function InvoiceDetailPage() {
     setShowShare(true);
   };
 
+  const handleConfirmSend = async () => {
+    try {
+      setIsConfirming(true);
+      await api.post(`/invoices/${invoiceId}/send`);
+      await fetchInvoiceDetails();
+    } catch (e) {
+      console.error('Error confirming (sending) invoice:', e);
+      alert('Failed to confirm invoice. Please try again.');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
   if (loading) {
     return <UltraEnhancedLoading />;
   }
@@ -307,6 +321,26 @@ export default function InvoiceDetailPage() {
               <Share2 className="h-4 w-4" />
               <span>Share</span>
             </button>
+
+            {invoice.status === 'DRAFT' && (
+              <button
+                onClick={handleConfirmSend}
+                disabled={isConfirming}
+                className="inline-flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isConfirming ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Confirming...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4" />
+                    <span>Confirm</span>
+                  </>
+                )}
+              </button>
+            )}
             
             {invoice.status !== 'PAID' && (
               <button

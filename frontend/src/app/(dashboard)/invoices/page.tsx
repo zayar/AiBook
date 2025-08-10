@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { InvoiceAPI } from '@/lib/invoice-api';
 import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
+import InvoiceLoadingAnimation from '@/components/InvoiceLoadingAnimation';
 import { 
   Plus, 
   Search, 
@@ -109,13 +110,21 @@ export default function InvoicesPage() {
   const itemsPerPage = 20;
 
   useEffect(() => {
-    fetchInvoices();
-    fetchAIInsights();
+    // OPTIMIZATION: Only show loading spinner on first load
+    const isFirstLoad = invoices.length === 0;
+    fetchInvoices(isFirstLoad);
+    if (isFirstLoad) {
+      fetchAIInsights();
+    }
   }, [currentPage, searchTerm, filters, sortField, sortDirection]);
 
-  const fetchInvoices = async () => {
+  const fetchInvoices = async (isInitialLoad = false) => {
     try {
-      setLoading(true);
+      // OPTIMIZATION: Only show loading for initial load, not for subsequent updates
+      if (isInitialLoad) {
+        setLoading(true);
+      }
+      
       const response = await InvoiceAPI.getInvoices({
         page: currentPage,
         limit: itemsPerPage,
@@ -131,7 +140,9 @@ export default function InvoicesPage() {
     } catch (error) {
       console.error('❌ Error fetching invoices:', error);
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
   };
 
@@ -542,7 +553,7 @@ export default function InvoicesPage() {
   );
 
   if (loading) {
-    return <UltraEnhancedLoading />;
+    return <InvoiceLoadingAnimation />;
   }
 
   return (

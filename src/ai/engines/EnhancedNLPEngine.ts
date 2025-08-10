@@ -112,9 +112,9 @@ export class EnhancedNLPEngine {
     },
     reportType: {
       patterns: [
-        /(profit\s+and\s+loss|p&l|income\s+statement)/i,
+        /(profit\s+and\s+loss|p&l|income\s+statement|net\s+income|total\s+income|revenue)/i,
         /balance\s+sheet/i,
-        /cash\s+flow/i,
+        /cash\s+flow|cashflow/i,
         /trial\s+balance/i,
         /general\s+ledger/i
       ]
@@ -306,7 +306,10 @@ Return as JSON with keys: intent, entities, businessContext, confidence`;
         { role: 'user', content: `Query: "${query}"` }
       ]);
 
-      return JSON.parse(response.content || '{}');
+      let content = response.content || '{}';
+      // Clean up markdown formatting if present
+      content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      return JSON.parse(content);
     } catch (error) {
       console.error('❌ Error in context-aware analysis:', error);
       return {};
@@ -422,18 +425,19 @@ Return as JSON with keys: intent, entities, businessContext, confidence`;
 
   private normalizeReportType(reportStr: string): string {
     const lowerReport = reportStr.toLowerCase();
-    
-    if (lowerReport.includes('profit') || lowerReport.includes('p&l')) {
+    if (lowerReport.includes('profit') || lowerReport.includes('p&l') || lowerReport.includes('income') || lowerReport.includes('revenue')) {
       return 'profit_loss';
-    }
-    if (lowerReport.includes('balance')) {
-      return 'balance_sheet';
     }
     if (lowerReport.includes('cash')) {
       return 'cash_flow';
     }
-    
-    return 'general';
+    if (lowerReport.includes('balance')) {
+      return 'balance_sheet';
+    }
+    if (lowerReport.includes('trial')) {
+      return 'trial_balance';
+    }
+    return 'profit_loss';
   }
 
   private parseAmount(amountStr: string): any {

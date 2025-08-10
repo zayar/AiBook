@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { JournalEntryEngine } from './JournalEntryEngine';
 
 const prisma = new PrismaClient();
@@ -77,10 +77,15 @@ export class COGSEngine {
    * 📦 RECORD INVENTORY PURCHASE
    * Creates a cost layer for FIFO tracking when inventory is purchased
    */
-  async recordInventoryPurchase(input: InventoryPurchaseInput): Promise<CostLayer> {
+  async recordInventoryPurchase(
+    input: InventoryPurchaseInput,
+    tx?: Prisma.TransactionClient
+  ): Promise<CostLayer> {
     try {
       // Validate inventory item exists
-      const inventoryItem = await prisma.inventoryItem.findFirst({
+      const db = tx ?? prisma;
+
+      const inventoryItem = await db.inventoryItem.findFirst({
         where: { 
           id: input.inventoryItemId, 
           tenantId: input.tenantId 
@@ -92,7 +97,7 @@ export class COGSEngine {
       }
 
       // Create cost layer
-      const costLayer = await prisma.inventoryCostLayer.create({
+      const costLayer = await db.inventoryCostLayer.create({
         data: {
           inventoryItemId: input.inventoryItemId,
           purchaseDate: input.purchaseDate,
@@ -106,7 +111,7 @@ export class COGSEngine {
       });
 
       // Update inventory item quantity
-      await prisma.inventoryItem.update({
+      await db.inventoryItem.update({
         where: { id: input.inventoryItemId },
         data: {
           quantityOnHand: {

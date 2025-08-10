@@ -1,6 +1,4 @@
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://your-production-domain.com/api/v1' 
-  : 'http://localhost:3000/api/v1';
+const API_BASE_URL = '/api/v1'; // Use frontend proxy for consistent authentication
 
 export interface PaymentReceived {
   id: string;
@@ -98,10 +96,18 @@ export interface PaymentsReceivedResponse {
 
 class PaymentReceivedAPI {
   private getHeaders() {
-    return {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'x-tenant-id': 'default',
     };
+
+    // Add auth token if available (for frontend proxy authentication)
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    return headers;
   }
 
   async getPaymentsReceived(params?: {

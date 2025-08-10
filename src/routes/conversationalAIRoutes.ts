@@ -1,5 +1,6 @@
 import express from 'express';
 import { ConversationManager, ConversationContext } from '../ai/conversation/ConversationManager';
+import { ImprovedFinancialAI } from '../ai/services/ImprovedFinancialAI';
 import { enhancedTenantMiddleware } from '../middleware/enhancedTenantMiddleware';
 import { PrismaClient } from '@prisma/client';
 
@@ -10,11 +11,17 @@ const prisma = new PrismaClient();
 router.use(enhancedTenantMiddleware);
 
 /**
- * POST /chat - Main conversational interface
+ * 🌍 POST /chat - Multilingual AI Financial Assistant
+ * 
+ * Powered by Google Vertex AI with support for:
+ * • English: "What's our revenue this month?"
+ * • Myanmar: "ဒီလ ဝင်ငွေ ဘယ်လောက်လဲ?"
+ * • Chinese: "这个月的收入是多少？"
+ * • Thai: "รายได้เดือนนี้เท่าไหร่?"
  */
 router.post('/chat', async (req, res) => {
   try {
-    const { message, sessionId } = req.body;
+    const { message, sessionId, language } = req.body;
     const tenantId = req.tenant?.tenantId || 'default';
     const userId = req.user?.uid;
 
@@ -25,28 +32,23 @@ router.post('/chat', async (req, res) => {
       });
     }
 
-    // Initialize conversation manager
-    const conversationManager = new ConversationManager(tenantId);
+    console.log(`🌍 Multilingual AI Chat: "${message}" (${language || 'auto-detect'}, tenant: ${tenantId})`);
 
-    // Get or create session
-    let currentSessionId = sessionId;
-    if (!currentSessionId) {
-      currentSessionId = await conversationManager.startSession(userId, tenantId);
-    }
+    // Create improved financial AI service for this tenant
+    const financialAI = new ImprovedFinancialAI(tenantId);
 
-    // Build conversation context
-    const context: ConversationContext = {
-      sessionId: currentSessionId,
-      userId,
+    // Generate session ID if not provided
+    const currentSessionId = sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Process with Improved Financial AI
+    const response = await financialAI.processQuery(message, {
       tenantId,
-      entities: {},
-      conversationHistory: await conversationManager.getConversationHistory(currentSessionId),
-      userPreferences: {},
-      businessContext: {}
-    };
+      userId,
+      language: language as 'en' | 'my' | 'zh' | 'th',
+      sessionId: currentSessionId
+    });
 
-    // Process the message
-    const response = await conversationManager.processMessage(message, context);
+    console.log(`🤖 Financial AI Response (${response.intent}): ${response.response.substring(0, 100)}...`);
 
     res.json({
       success: true,
@@ -54,20 +56,23 @@ router.post('/chat', async (req, res) => {
       response: response.response,
       intent: response.intent,
       confidence: response.confidence,
+      data: response.data,
+      report: response.report,
       followUpQuestions: response.followUpQuestions,
-      visualizations: response.visualizations,
-      actionRequired: response.actionRequired,
       metadata: {
         executionTime: response.executionTime,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        aiModel: 'improved-financial-ai',
+        language: language || 'auto-detected'
       }
     });
 
   } catch (error) {
-    console.error('❌ Error in conversational chat:', error);
+    console.error('❌ Error in Financial AI conversation:', error);
     res.status(500).json({
       error: 'Failed to process conversation',
-      code: 'CONVERSATION_ERROR'
+      code: 'CONVERSATION_ERROR',
+      details: process.env.NODE_ENV === 'development' ? (error as Error)?.message : undefined
     });
   }
 });

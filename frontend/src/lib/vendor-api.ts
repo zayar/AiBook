@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+const API_URL = '/api/v1'; // Use frontend proxy for consistent authentication
 
 export interface VendorAddress {
   attention?: string;
@@ -132,6 +132,16 @@ export interface VendorStats {
   }>;
 }
 
+// Helper function to get authentication headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    'X-Tenant-ID': 'default',
+    ...(token && { Authorization: `Bearer ${token}` })
+  };
+};
+
 export const vendorApi = {
   // Get all vendors with filtering and pagination
   async getVendors(params: {
@@ -152,10 +162,7 @@ export const vendorApi = {
     if (params.paymentTerms) searchParams.set('paymentTerms', params.paymentTerms);
 
     const response = await fetch(`${API_URL}/vendors?${searchParams}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -168,10 +175,7 @@ export const vendorApi = {
   // Get vendor by ID
   async getVendor(id: string): Promise<{ vendor: Vendor }> {
     const response = await fetch(`${API_URL}/vendors/${id}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -228,10 +232,7 @@ export const vendorApi = {
 
     const response = await fetch(`${API_URL}/vendors`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(cleanedData),
     });
 
@@ -257,10 +258,7 @@ export const vendorApi = {
   async updateVendor(id: string, data: Partial<CreateVendorData>): Promise<{ vendor: Vendor; message: string }> {
     const response = await fetch(`${API_URL}/vendors/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
 
@@ -276,10 +274,7 @@ export const vendorApi = {
   async deleteVendor(id: string): Promise<{ message: string }> {
     const response = await fetch(`${API_URL}/vendors/${id}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -294,10 +289,7 @@ export const vendorApi = {
   async toggleVendorStatus(id: string): Promise<{ vendor: Vendor; message: string }> {
     const response = await fetch(`${API_URL}/vendors/${id}/toggle-status`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -311,10 +303,7 @@ export const vendorApi = {
   // Get vendor statistics
   async getVendorStats(): Promise<{ stats: VendorStats }> {
     const response = await fetch(`${API_URL}/vendors/stats`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -328,10 +317,7 @@ export const vendorApi = {
   async addContactPerson(vendorId: string, data: Omit<VendorContactPerson, 'id'>): Promise<{ contactPerson: VendorContactPerson; message: string }> {
     const response = await fetch(`${API_URL}/vendors/${vendorId}/contact-persons`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
 
@@ -346,10 +332,7 @@ export const vendorApi = {
   async updateContactPerson(vendorId: string, contactId: string, data: Partial<Omit<VendorContactPerson, 'id'>>): Promise<{ contactPerson: VendorContactPerson; message: string }> {
     const response = await fetch(`${API_URL}/vendors/${vendorId}/contact-persons/${contactId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
 
@@ -364,10 +347,7 @@ export const vendorApi = {
   async deleteContactPerson(vendorId: string, contactId: string): Promise<{ message: string }> {
     const response = await fetch(`${API_URL}/vendors/${vendorId}/contact-persons/${contactId}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {

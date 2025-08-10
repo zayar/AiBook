@@ -334,6 +334,7 @@ export class BillController {
             try {
               console.log(`🔄 Creating cost layer for inventory item: ${inventoryItemId}`);
               
+              // use same transaction to avoid FK timing issues
               await accountingService.recordInventoryPurchase({
                 inventoryItemId: inventoryItemId,
                 quantity: item.quantity,
@@ -341,7 +342,7 @@ export class BillController {
                 purchaseDate: bill.billDate,
                 billItemId: billItem.id,
                 reference: `BILL-${bill.billNumber}-${billItem.id}`
-              });
+              } as any, tx);
 
               console.log(`✅ Cost layer created for ${item.quantity} units at $${item.unitPrice} each`);
             } catch (error) {
@@ -374,7 +375,7 @@ export class BillController {
 
         return completeBill;
       }, {
-        timeout: 15000, // 15 seconds timeout instead of 5 seconds
+        timeout: 30000,
       });
 
       res.status(201).json({

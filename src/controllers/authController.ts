@@ -1,12 +1,125 @@
 import { Request, Response, NextFunction } from 'express';
 import firebaseService from '../services/firebaseService';
 import { PrismaClient } from '@prisma/client';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 import { UserRole } from '@/types';
 import { AppError } from '@/middleware/errorHandler';
 
+
 export class AuthController {
+  /**
+   * Username/password login (App login)
+   */
+  static async passwordLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email, password } = req.body as { email: string; password: string };
+      if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const [scheme, iterationsStr, digest, salt, hash] = user.passwordHash.split('$');
+      if (scheme !== 'pbkdf2') return res.status(401).json({ error: 'Invalid credentials' });
+      const iterations = parseInt(iterationsStr, 10);
+      const check = crypto.pbkdf2Sync(password, salt, iterations, hash.length / 2, digest).toString('hex');
+      const ok = crypto.timingSafeEqual(Buffer.from(check, 'hex'), Buffer.from(hash, 'hex'));
+      if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+
+      // Issue a simple session token (JWT)
+      const token = jwt.sign(
+        { 
+          adminId: user.id,
+          exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // 24 hours
+        },
+        process.env.JWT_SECRET || 'fallback-secret'
+      );
+
+      res.json({ success: true, token, user: { id: user.id, email: user.email, name: user.name, tenantId: user.tenantId, role: user.role, mustChange: user.passwordMustChange } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** Change password for logged-in user */
+  static async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword: string };
+      if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+      if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+
+      const user = await prisma.user.findUnique({ where: { firebaseUid: req.user.uid } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      if (user.passwordHash) {
+        if (!currentPassword && !user.passwordMustChange) {
+          return res.status(400).json({ error: 'Current password required' });
+        }
+        if (currentPassword && !user.passwordMustChange) {
+          const [scheme, iterationsStr, digest, salt, hash] = user.passwordHash.split('$');
+          const iterations = parseInt(iterationsStr, 10);
+          const check = require('crypto').pbkdf2Sync(currentPassword, salt, iterations, hash.length / 2, digest).toString('hex');
+          const ok = require('crypto').timingSafeEqual(Buffer.from(check, 'hex'), Buffer.from(hash, 'hex'));
+          if (!ok) return res.status(401).json({ error: 'Invalid current password' });
+        }
+      }
+
+      const crypto = require('crypto');
+      const salt = crypto.randomBytes(16).toString('hex');
+      const iterations = 120000;
+      const keylen = 32;
+      const digest = 'sha256';
+      const derived = crypto.pbkdf2Sync(newPassword, salt, iterations, keylen, digest).toString('hex');
+      const passwordHash = `pbkdf2$${iterations}$${digest}$${salt}$${derived}`;
+
+      await prisma.user.update({ where: { id: user.id }, data: { passwordHash, passwordMustChange: false } });
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** Set password using app login token (first-login flow) */
+  static async setPasswordWithToken(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { newPassword } = req.body as { newPassword: string };
+      if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+      if (!token) return res.status(401).json({ error: 'Authorization required' });
+
+      // Verify JWT token (not the super admin HMAC token)
+      let payload: any;
+      try {
+        payload = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret');
+      } catch (err) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+      if (!payload || typeof payload === 'string' || !payload.adminId) return res.status(401).json({ error: 'Invalid token' });
+      const userId = payload.adminId;
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const salt = crypto.randomBytes(16).toString('hex');
+      const iterations = 120000;
+      const keylen = 32;
+      const digest = 'sha256';
+      const derived = crypto.pbkdf2Sync(newPassword, salt, iterations, keylen, digest).toString('hex');
+      const passwordHash = `pbkdf2$${iterations}$${digest}$${salt}$${derived}`;
+
+      await prisma.user.update({ where: { id: user.id }, data: { passwordHash, passwordMustChange: false } });
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Register a new user
    */

@@ -10,6 +10,7 @@ import { enhancedTenantMiddleware, tenantContextMiddleware } from './middleware/
 import { tenantMiddleware } from './middleware/tenantMiddleware';
 import { authMiddleware } from './middleware/authMiddleware';
 import apiRoutes from './routes';
+import superAdminRoutes from './routes/superAdminRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -48,6 +49,9 @@ app.get('/health', (req, res) => {
     },
   });
 });
+
+// Super admin routes (outside tenant middleware)
+app.use('/superadmin', superAdminRoutes);
 
 // Apply tenant middleware, then tenant context storage (auth disabled for testing)
 app.use('/api/v1', tenantMiddleware, tenantContextMiddleware, apiRoutes);

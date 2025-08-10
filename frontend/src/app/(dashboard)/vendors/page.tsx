@@ -32,7 +32,7 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
-import { vendorApi, Vendor, VendorListResponse, VendorStats } from '../../lib/vendor-api';
+import { vendorApi, Vendor, VendorListResponse, VendorStats } from '../../../lib/vendor-api';
 
 export default function VendorsPage() {
   const router = useRouter();

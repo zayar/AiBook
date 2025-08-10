@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+const API_BASE_URL = '/api/v1'; // Use frontend proxy for consistent authentication
 
 export interface ReportParams {
   startDate?: string;
@@ -73,14 +73,30 @@ export class ReportsAPI {
   private static baseURL = API_BASE_URL;
 
   /**
+   * Get common headers with authentication
+   */
+  private static getHeaders() {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Tenant-ID': 'default',
+    };
+
+    // Add auth token if available (for frontend proxy authentication)
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    return headers;
+  }
+
+  /**
    * Get reports menu structure
    */
   static async getReportsMenu() {
     try {
       const response = await axios.get(`${this.baseURL}/reports/menu`, {
-        headers: {
-          'X-Tenant-ID': 'default'
-        }
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error) {
@@ -96,9 +112,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/general-ledger`, {
         params,
-        headers: {
-          'X-Tenant-ID': 'default'
-        }
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error) {
@@ -114,9 +128,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/account-transactions`, {
         params,
-        headers: {
-          'X-Tenant-ID': 'default'
-        }
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error) {
@@ -132,9 +144,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/journal-entries`, {
         params,
-        headers: {
-          'X-Tenant-ID': 'default'
-        }
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error) {
@@ -150,9 +160,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/trial-balance`, {
         params,
-        headers: {
-          'X-Tenant-ID': 'default'
-        }
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error) {
@@ -168,9 +176,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/cash-flow`, {
         params,
-        headers: {
-          'X-Tenant-ID': 'default'
-        }
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error) {
@@ -186,9 +192,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/profit-loss`, {
         params,
-        headers: {
-          'X-Tenant-ID': 'default'
-        }
+        headers: this.getHeaders()
       });
       return response.data;
     } catch (error) {
@@ -245,9 +249,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/${reportType}`, {
         params: { ...params, format: 'pdf' },
-        headers: {
-          'X-Tenant-ID': 'default'
-        },
+        headers: this.getHeaders(),
         responseType: 'blob'
       });
       
@@ -273,9 +275,7 @@ export class ReportsAPI {
     try {
       const response = await axios.get(`${this.baseURL}/reports/${reportType}`, {
         params: { ...params, format: 'excel' },
-        headers: {
-          'X-Tenant-ID': 'default'
-        },
+        headers: this.getHeaders(),
         responseType: 'blob'
       });
       

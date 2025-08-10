@@ -2,6 +2,7 @@ import { ChartOfAccountsEngine } from './engines/ChartOfAccountsEngine';
 import { JournalEntryEngine } from './engines/JournalEntryEngine';
 import { ReportingEngine } from './engines/ReportingEngine';
 import { COGSEngine } from './engines/COGSEngine';
+import { Prisma } from '@prisma/client';
 
 /**
  * 🏢 ACCOUNTING SERVICE
@@ -109,11 +110,14 @@ export class AccountingService {
     purchaseDate: Date;
     billItemId?: string;
     reference?: string;
-  }) {
-    return await this.cogsEngine.recordInventoryPurchase({
-      ...input,
-      tenantId: this.tenantId
-    });
+  }, tx?: Prisma.TransactionClient) {
+    return await this.cogsEngine.recordInventoryPurchase(
+      {
+        ...input,
+        tenantId: this.tenantId
+      },
+      tx
+    );
   }
 
   async calculateCOGS(input: {

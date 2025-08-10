@@ -27,7 +27,7 @@ import {
   Plus
 } from 'lucide-react';
 
-const API_URL = 'http://localhost:3001/api/v1';
+const API_URL = '/api/v1'; // Use frontend proxy for consistent authentication
 
 interface BankAccount {
   id: string;
@@ -105,10 +105,12 @@ const BankingDetailsPage: React.FC = () => {
       setLoading(true);
       
       // Load payment methods to find the specific account
+      const token = localStorage.getItem('token');
       const accountResponse = await fetch(`${API_URL}/banking/payment-methods`, {
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default'
+          'X-Tenant-ID': 'default',
+          'Authorization': token ? `Bearer ${token}` : ''
         }
       });
 
@@ -166,12 +168,14 @@ const BankingDetailsPage: React.FC = () => {
   // Load transactions with enhanced API
   const loadTransactions = async (paymentMethodId: string) => {
     try {
+      const token = localStorage.getItem('token');
       const transactionResponse = await fetch(
         `${API_URL}/banking/payment-methods/${paymentMethodId}/transactions?page=1&limit=50&status=${filterStatus}${searchTerm ? `&search=${searchTerm}` : ''}`,
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Tenant-ID': 'default'
+            'X-Tenant-ID': 'default',
+            'Authorization': token ? `Bearer ${token}` : ''
           }
         }
       );
@@ -536,9 +540,51 @@ const BankingDetailsPage: React.FC = () => {
 
             <div className="flex items-end space-x-2">
               <button
-                onClick={() => {
-                  // Auto-reconcile by setting reconciled balance equal to current balance
-                  setAccount(prev => prev ? { ...prev, reconciledBalance: prev.balance } : null);
+                onClick={async () => {
+                  try {
+                    const token = localStorage.getItem('token');
+                    
+                    // Get all unreconciled transactions to auto-reconcile
+                    const unreconciledTransactions = transactions
+                      .filter(tx => !tx.reconciled)
+                      .map(tx => tx.id);
+                    
+                    if (unreconciledTransactions.length === 0) {
+                      alert('All transactions are already reconciled');
+                      return;
+                    }
+
+                    // Auto-reconcile by using current balance as statement balance
+                    const response = await fetch(`${API_URL}/banking/payment-methods/${account.id}/reconcile`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'X-Tenant-ID': 'default',
+                        'Authorization': token ? `Bearer ${token}` : ''
+                      },
+                      body: JSON.stringify({
+                        transactionIds: unreconciledTransactions,
+                        statementBalance: account.balance, // Use current balance for auto-reconcile
+                        reconciliationDate: new Date().toISOString(),
+                        notes: `Auto-reconciliation of ${unreconciledTransactions.length} transactions`
+                      })
+                    });
+                    
+                    if (response.ok) {
+                      const result = await response.json();
+                      alert(`Auto-reconciliation completed! ${result.reconciledCount} transactions reconciled.`);
+                      // Update local state to reflect reconciliation
+                      setAccount(prev => prev ? { ...prev, reconciledBalance: prev.balance } : null);
+                      // Refresh account data
+                      loadAccountData();
+                    } else {
+                      const errorData = await response.json();
+                      alert(`Failed to auto-reconcile: ${errorData.error || 'Unknown error'}`);
+                    }
+                  } catch (error) {
+                    console.error('Error during auto-reconciliation:', error);
+                    alert('Error during auto-reconciliation');
+                  }
                 }}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
               >
@@ -547,32 +593,51 @@ const BankingDetailsPage: React.FC = () => {
               <button
                 onClick={async () => {
                   try {
-                    // Save balance changes to backend
-                    const response = await fetch(`${API_URL}/banking/payment-methods/${account.id}`, {
-                      method: 'PATCH',
+                    const token = localStorage.getItem('token');
+                    
+                    // Get all unreconciled transactions to reconcile them
+                    const unreconciledTransactions = transactions
+                      .filter(tx => !tx.reconciled)
+                      .map(tx => tx.id);
+                    
+                    if (unreconciledTransactions.length === 0) {
+                      alert('No unreconciled transactions to reconcile');
+                      return;
+                    }
+
+                    // Call reconciliation endpoint
+                    const response = await fetch(`${API_URL}/banking/payment-methods/${account.id}/reconcile`, {
+                      method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
-                        'X-Tenant-ID': 'default'
+                        'X-Tenant-ID': 'default',
+                        'Authorization': token ? `Bearer ${token}` : ''
                       },
                       body: JSON.stringify({
-                        balance: account.balance,
-                        reconciledBalance: account.reconciledBalance
+                        transactionIds: unreconciledTransactions,
+                        statementBalance: account.reconciledBalance || account.balance,
+                        reconciliationDate: new Date().toISOString(),
+                        notes: `Manual reconciliation of ${unreconciledTransactions.length} transactions`
                       })
                     });
                     
                     if (response.ok) {
-                      alert('Balance updated successfully!');
+                      const result = await response.json();
+                      alert(`Reconciliation completed! ${result.reconciledCount} transactions reconciled.`);
+                      // Refresh account data
+                      loadAccountData();
                     } else {
-                      alert('Failed to update balance');
+                      const errorData = await response.json();
+                      alert(`Failed to reconcile: ${errorData.error || 'Unknown error'}`);
                     }
                   } catch (error) {
-                    console.error('Error updating balance:', error);
-                    alert('Error updating balance');
+                    console.error('Error during reconciliation:', error);
+                    alert('Error during reconciliation');
                   }
                 }}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
               >
-                Save Changes
+                Reconcile Transactions
               </button>
             </div>
           </div>

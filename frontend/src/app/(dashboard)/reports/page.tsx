@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ReportsAPI } from '../../lib/reports-api';
+import { ReportsAPI } from '../../../lib/reports-api';
 
 interface Report {
   id: string;

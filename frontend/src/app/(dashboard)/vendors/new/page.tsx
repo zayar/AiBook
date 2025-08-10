@@ -23,7 +23,7 @@ import {
   CheckCircle,
   Loader2,
 } from 'lucide-react';
-import { vendorApi, CreateVendorData, VendorContactPerson, VendorAddress } from '../../../lib/vendor-api';
+import { vendorApi, CreateVendorData, VendorContactPerson, VendorAddress } from '@/lib/vendor-api';
 
 interface FormErrors {
   [key: string]: string;

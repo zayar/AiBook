@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SystemAdmin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("system_admins")
+}
+
 model Tenant {
   id                    String                 @id @default(cuid())
   name                  String
@@ -187,6 +200,8 @@ model User {
   role        UserRole @default(USER)
   tenantId    String?
   isActive    Boolean  @default(true)
+  passwordHash String?
+  passwordMustChange Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

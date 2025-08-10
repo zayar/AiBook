@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { ReportingEngine } from '../../accounting/engines/ReportingEngine';
 import type { ConversationContext } from '../conversation/ConversationManager';
 
 const prisma = new PrismaClient();
@@ -52,22 +53,22 @@ export class SmartReportGenerator {
       queries: {
         revenue: `
           SELECT 
-            DATE_FORMAT(e.entryDate, '%Y-%m') as period,
-            SUM(CASE WHEN a.accountType = 'REVENUE' THEN e.amount ELSE 0 END) as revenue
+            DATE_FORMAT(e.postedAt, '%Y-%m') as period,
+            SUM(CASE WHEN a.type = 'INCOME' THEN e.amount ELSE 0 END) as revenue
           FROM entries e
           JOIN accounts a ON e.accountId = a.id
-          WHERE e.tenantId = ? AND e.entryDate BETWEEN ? AND ?
-          GROUP BY DATE_FORMAT(e.entryDate, '%Y-%m')
+          WHERE e.tenantId = ? AND e.postedAt BETWEEN ? AND ?
+          GROUP BY DATE_FORMAT(e.postedAt, '%Y-%m')
           ORDER BY period
         `,
         expenses: `
           SELECT 
-            DATE_FORMAT(e.entryDate, '%Y-%m') as period,
-            SUM(CASE WHEN a.accountType = 'EXPENSE' THEN e.amount ELSE 0 END) as expenses
+            DATE_FORMAT(e.postedAt, '%Y-%m') as period,
+            SUM(CASE WHEN a.type = 'EXPENSE' THEN e.amount ELSE 0 END) as expenses
           FROM entries e
           JOIN accounts a ON e.accountId = a.id
-          WHERE e.tenantId = ? AND e.entryDate BETWEEN ? AND ?
-          GROUP BY DATE_FORMAT(e.entryDate, '%Y-%m')
+          WHERE e.tenantId = ? AND e.postedAt BETWEEN ? AND ?
+          GROUP BY DATE_FORMAT(e.postedAt, '%Y-%m')
           ORDER BY period
         `
       }
@@ -78,13 +79,13 @@ export class SmartReportGenerator {
       queries: {
         operating: `
           SELECT 
-            DATE_FORMAT(e.entryDate, '%Y-%m') as period,
-            SUM(CASE WHEN e.entryType = 'CREDIT' THEN e.amount ELSE -e.amount END) as operating_cash_flow
+            DATE_FORMAT(e.postedAt, '%Y-%m') as period,
+            SUM(CASE WHEN e.type = 'CREDIT' THEN e.amount ELSE -e.amount END) as operating_cash_flow
           FROM entries e
           JOIN accounts a ON e.accountId = a.id
-          WHERE e.tenantId = ? AND e.entryDate BETWEEN ? AND ?
-            AND a.accountType IN ('REVENUE', 'EXPENSE')
-          GROUP BY DATE_FORMAT(e.entryDate, '%Y-%m')
+          WHERE e.tenantId = ? AND e.postedAt BETWEEN ? AND ?
+            AND a.type IN ('INCOME', 'EXPENSE')
+          GROUP BY DATE_FORMAT(e.postedAt, '%Y-%m')
           ORDER BY period
         `
       }
@@ -96,15 +97,15 @@ export class SmartReportGenerator {
         assets: `
           SELECT 
             a.name as account_name,
-            a.accountType as account_type,
-            SUM(CASE WHEN e.entryType = 'DEBIT' THEN e.amount ELSE -e.amount END) as balance
+            a.type as account_type,
+            SUM(CASE WHEN e.type = 'DEBIT' THEN e.amount ELSE -e.amount END) as balance
           FROM accounts a
           LEFT JOIN entries e ON a.id = e.accountId
-          WHERE a.tenantId = ? AND (e.entryDate <= ? OR e.entryDate IS NULL)
-            AND a.accountType IN ('ASSET', 'LIABILITY', 'EQUITY')
-          GROUP BY a.id, a.name, a.accountType
+          WHERE a.tenantId = ? AND (e.postedAt <= ? OR e.postedAt IS NULL)
+            AND a.type IN ('ASSET', 'LIABILITY', 'EQUITY')
+          GROUP BY a.id, a.name, a.type
           HAVING balance != 0
-          ORDER BY a.accountType, a.name
+          ORDER BY a.type, a.name
         `
       }
     }
@@ -204,40 +205,117 @@ export class SmartReportGenerator {
   private async generateCustomReport(
     config: ReportConfiguration
   ): Promise<GeneratedReport> {
+    // Prefer typed engines for core statements; fall back to SQL templates otherwise
+    const engine = new ReportingEngine(this.tenantId);
+
+    if (config.type === 'profit_loss') {
+      // Use the working reports API directly
+      const response = await fetch('http://localhost:3000/api/v1/reports/profit-loss?period=this_month', {
+        headers: {
+          'X-Tenant-ID': this.tenantId,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch P&L report: ${response.statusText}`);
+      }
+      
+      const reportData: any = await response.json();
+      const data: any[] = [
+        { section: 'summary', data: (reportData as any).summary },
+        { section: 'revenue', data: (reportData as any).revenue },
+        { section: 'expenses', data: (reportData as any).expenses }
+      ];
+      const visualizations = [
+        { type: 'kpis', kpis: [
+          { label: 'Total Revenue', value: (reportData as any).summary?.totalRevenue },
+          { label: 'Total Expenses', value: (reportData as any).summary?.totalExpenses },
+          { label: 'Gross Profit', value: (reportData as any).summary?.grossProfit },
+          { label: 'Net Income', value: (reportData as any).summary?.netIncome },
+          { label: 'Profit Margin', value: `${(reportData as any).summary?.profitMargin?.toFixed?.(1) ?? ''}%` }
+        ], timeframe: config.timeframe }
+      ];
+      return {
+        id: `pl_${Date.now()}`,
+        title: 'Profit & Loss Statement',
+        summary: 'Revenue, COGS, operating expenses and net income for the selected period',
+        data,
+        visualizations,
+        insights: [],
+        recommendations: [],
+        metadata: { generated: new Date(), executionTime: 0, dataPoints: 0, confidence: 0.9 }
+      };
+    }
+
+    if (config.type === 'cash_flow') {
+      const stmt = await engine.generateCashFlowStatement(config.timeframe.start, config.timeframe.end);
+      const data = [
+        { section: 'operating', data: stmt.data.operating },
+        { section: 'investing', data: stmt.data.investing },
+        { section: 'financing', data: stmt.data.financing }
+      ];
+      const visualizations = [
+        { type: 'kpis', kpis: [
+          { label: 'Operating', value: stmt.totals.operating },
+          { label: 'Investing', value: stmt.totals.investing },
+          { label: 'Financing', value: stmt.totals.financing },
+          { label: 'Net Change', value: stmt.totals.netChange }
+        ], timeframe: config.timeframe }
+      ];
+      return {
+        id: `cf_${Date.now()}`,
+        title: 'Cash Flow Statement',
+        summary: 'Cash inflows and outflows by activity for the selected period',
+        data,
+        visualizations,
+        insights: [],
+        recommendations: [],
+        metadata: { generated: new Date(), executionTime: 0, dataPoints: 0, confidence: 0.9 }
+      };
+    }
+
+    if (config.type === 'balance_sheet') {
+      const stmt = await engine.generateBalanceSheet(config.timeframe.end);
+      const data = [
+        { section: 'assets', data: stmt.data.assets },
+        { section: 'liabilities', data: stmt.data.liabilities },
+        { section: 'equity', data: stmt.data.equity }
+      ];
+      const visualizations = [
+        { type: 'kpis', kpis: [
+          { label: 'Total Assets', value: stmt.totals.totalAssets },
+          { label: 'Total Liabilities', value: stmt.totals.totalLiabilities },
+          { label: 'Equity', value: stmt.totals.totalEquity }
+        ], timeframe: config.timeframe }
+      ];
+      return {
+        id: `bs_${Date.now()}`,
+        title: 'Balance Sheet',
+        summary: 'Assets, liabilities and equity as of selected date',
+        data,
+        visualizations,
+        insights: [],
+        recommendations: [],
+        metadata: { generated: new Date(), executionTime: 0, dataPoints: 0, confidence: 0.9 }
+      };
+    }
+
+    // Fallback to the SQL-template approach if not one of the core statements
     const template = this.reportTemplates[config.type as keyof typeof this.reportTemplates];
-    
     if (!template) {
       throw new Error(`Unsupported report type: ${config.type}`);
     }
 
     const data: any[] = [];
     const visualizations: any[] = [];
-
-    // Execute queries for this report type
     for (const [queryName, sql] of Object.entries(template.queries)) {
-      const queryParams = [
-        this.tenantId,
-        config.timeframe.start,
-        config.timeframe.end
-      ];
-
+      const queryParams = [this.tenantId, config.timeframe.start, config.timeframe.end];
       const results = await prisma.$queryRawUnsafe(sql, ...queryParams);
-      data.push({
-        section: queryName,
-        data: results
-      });
-
-      // Generate appropriate visualization
-      const visualization = this.generateVisualization(
-        queryName,
-        results as any[],
-        config
-      );
-      if (visualization) {
-        visualizations.push(visualization);
-      }
+      data.push({ section: queryName, data: results });
+      const viz = this.generateVisualization(queryName, results as any[], config);
+      if (viz) visualizations.push(viz);
     }
-
     return {
       id: `report_${Date.now()}`,
       title: template.name,
@@ -246,12 +324,7 @@ export class SmartReportGenerator {
       visualizations,
       insights: [],
       recommendations: [],
-      metadata: {
-        generated: new Date(),
-        executionTime: 0,
-        dataPoints: data.reduce((sum, section) => sum + section.data.length, 0),
-        confidence: 0.9
-      }
+      metadata: { generated: new Date(), executionTime: 0, dataPoints: data.reduce((s, sec) => s + sec.data.length, 0), confidence: 0.9 }
     };
   }
 

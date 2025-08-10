@@ -204,7 +204,12 @@ export class ConversationManager {
     analysis: any,
     context: ConversationContext
   ): Promise<Omit<ConversationResponse, 'executionTime'>> {
-    const { intent, entities, confidence } = analysis;
+    let { intent, entities, confidence } = analysis;
+
+    // If the user mentioned a recognizable report, coerce to financial_report
+    if (intent === 'general' && entities && entities.reportType) {
+      intent = 'financial_report';
+    }
 
     switch (intent) {
       case 'financial_report':
@@ -275,16 +280,46 @@ export class ConversationManager {
     entities: any,
     context: ConversationContext
   ): Promise<Omit<ConversationResponse, 'executionTime'>> {
-    // Implementation for data inquiries
-    return {
-      response: `Let me look up that information for you about ${entities.subject || 'your business data'}.`,
-      intent: 'data_inquiry',
-      confidence: 0.8,
-      followUpQuestions: [
-        'Would you like me to show this as a chart?',
-        'Should I compare this with historical data?'
-      ]
-    };
+    try {
+      // Map common phrases to reports
+      const subject = (entities.category || entities.subject || '').toLowerCase();
+      let reportType = entities.reportType as string | undefined;
+      if (!reportType) {
+        if (subject.includes('revenue') || subject.includes('income') || subject.includes('sales')) {
+          reportType = 'profit_loss';
+        }
+        if (subject.includes('cash')) {
+          reportType = 'cash_flow';
+        }
+      }
+
+      const report = await this.reportGenerator.generateFromNaturalLanguage(
+        reportType || 'profit_loss',
+        entities,
+        context
+      );
+
+      return {
+        response: `Here is the ${reportType === 'cash_flow' ? 'cash flow' : 'income'} summary for the selected period.`,
+        intent: 'data_inquiry',
+        confidence: 0.9,
+        visualizations: [report],
+        followUpQuestions: [
+          'Would you like a comparison with last month?',
+          'Should I break this down by category?'
+        ]
+      };
+    } catch (e) {
+      return {
+        response: `Let me look up that information for you about ${entities.subject || 'your business data'}.`,
+        intent: 'data_inquiry',
+        confidence: 0.6,
+        followUpQuestions: [
+          'Would you like me to show this as a chart?',
+          'Should I compare this with historical data?'
+        ]
+      };
+    }
   }
 
   /**

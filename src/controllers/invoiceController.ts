@@ -411,29 +411,33 @@ class InvoiceController {
         ];
       }
 
+      // OPTIMIZATION: Reduced include to only essential fields for list view
       const [invoices, totalCount] = await Promise.all([
         prisma.invoice.findMany({
           where,
-          include: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            issueDate: true,
+            dueDate: true,
+            subtotal: true,
+            taxAmount: true,
+            totalAmount: true,
+            paidAmount: true,
+            status: true,
+            currency: true,
+            createdAt: true,
+            updatedAt: true,
             customer: {
               select: { id: true, name: true, email: true }
             },
-            items: {
-              include: {
-                inventoryItem: {
-                  select: {
-                    id: true,
-                    sku: true,
-                    name: true,
-                    description: true,
-                    unitOfMeasure: true,
-                    unitPrice: true,
-                    quantityOnHand: true
-                  }
-                }
+            // Only get count of items and payments, not full data
+            _count: {
+              select: {
+                items: true,
+                payments: true
               }
-            },
-            payments: true
+            }
           },
           orderBy: { [sortBy as string]: sortOrder },
           skip,
@@ -442,8 +446,13 @@ class InvoiceController {
         prisma.invoice.count({ where })
       ]);
 
-      // AI Insights: Generate financial insights for the invoice data
-      const insights = await InvoiceController.generateInvoiceInsights(invoices, tenantId);
+      // OPTIMIZATION: Skip AI insights for list view to improve performance
+      // Only generate insights if specifically requested
+      const generateInsights = req.query.includeInsights === 'true';
+      let insights = null;
+      if (generateInsights) {
+        insights = await InvoiceController.generateInvoiceInsights(invoices, tenantId);
+      }
 
       res.json({
         invoices,

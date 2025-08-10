@@ -1,5 +1,15 @@
-// API base URL from environment
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+// API base URL - use frontend proxy for consistent authentication
+const API_URL = '/api/v1';
+
+// Helper function to get authentication headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    'X-Tenant-ID': 'default',
+    ...(token && { Authorization: `Bearer ${token}` })
+  };
+};
 
 // TypeScript interfaces
 export interface BillItem {
@@ -113,10 +123,7 @@ export const billApi = {
     
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-tenant-id': 'default',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {

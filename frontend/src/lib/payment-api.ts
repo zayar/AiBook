@@ -1,17 +1,24 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
+  baseURL: '/api/v1', // Use frontend proxy instead of direct backend calls
   withCredentials: false,
   headers: {
-    'X-Tenant-ID': 'default',
+    'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor for debugging
+// Request interceptor for debugging and auth
 api.interceptors.request.use(
   (config) => {
     console.log('🔄 Payment API Request:', config.method?.toUpperCase(), config.url);
+    
+    // Add auth token if available
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
     return config;
   },
   (error) => {

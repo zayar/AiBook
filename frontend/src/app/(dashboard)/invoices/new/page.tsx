@@ -820,7 +820,7 @@ function NewInvoiceContent() {
             className="inline-flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
-            <span>{isSubmitting ? 'Creating...' : 'Save & Send'}</span>
+            <span>{isSubmitting ? 'Creating...' : 'Confirm'}</span>
           </button>
         </div>
       </div>

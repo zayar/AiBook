@@ -142,8 +142,8 @@ export async function PUT(
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'X-Tenant-ID': 'default', // Development mode
-        ...Object.fromEntries(request.headers.entries())
+        'X-Tenant-ID': 'default',
+        ...(request.headers.get('authorization') ? { Authorization: request.headers.get('authorization') as string } : {})
       },
       body
     });

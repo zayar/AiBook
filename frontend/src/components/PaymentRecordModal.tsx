@@ -1,25 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PaymentAPI, PaymentMethod, CreatePaymentMethodData } from '@/lib/payment-api';
 import { 
   CreditCard, 
-  Plus, 
-  Check, 
   X, 
-  Edit, 
-  Trash2, 
-  Star,
-  Building,
-  Wallet,
   DollarSign,
   Calendar,
   FileText,
-  AlertCircle,
-  Settings,
-  Banknote,
-  Smartphone
+  AlertCircle
 } from 'lucide-react';
+import { paymentReceivedAPI } from '@/lib/payment-received-api';
 
 interface PaymentRecordModalProps {
   isOpen: boolean;
@@ -43,8 +33,9 @@ const PaymentRecordModal: React.FC<PaymentRecordModalProps> = ({
   onPaymentRecorded,
   invoice
 }) => {
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
+  const [depositAccounts, setDepositAccounts] = useState<any[]>([]);
+  const [isDepositDropdownOpen, setIsDepositDropdownOpen] = useState(false);
+  const [depositSearchTerm, setDepositSearchTerm] = useState('');
   const [amount, setAmount] = useState<string>((invoice.totalAmount - invoice.paidAmount).toString());
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [reference, setReference] = useState<string>('');
@@ -52,72 +43,82 @@ const PaymentRecordModal: React.FC<PaymentRecordModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>('');
   
-  // Payment method management states
-  const [showCreatePaymentMethod, setShowCreatePaymentMethod] = useState(false);
-  const [newPaymentMethod, setNewPaymentMethod] = useState<CreatePaymentMethodData>({
-    name: '',
-    type: 'cash',
-    accountNumber: '',
-    bankName: '',
-    isDefault: false
+  const [formData, setFormData] = useState({
+    paymentMode: 'CASH',
+    depositToAccountId: '',
   });
-  const [isCreatingPaymentMethod, setIsCreatingPaymentMethod] = useState(false);
 
-  // Load payment methods
-  const loadPaymentMethods = async () => {
+  // Load deposit accounts (Chart of Accounts for deposit selection)
+  const fetchDepositAccounts = async () => {
     try {
-      const response = await PaymentAPI.getPaymentMethods(true);
-      setPaymentMethods(response.paymentMethods);
+      const response = await paymentReceivedAPI.getDepositAccounts();
+      console.log('Deposit accounts response:', response); // Debug log
       
-      // Set default payment method if available
-      const defaultMethod = response.paymentMethods.find(pm => pm.isDefault);
-      if (defaultMethod && !selectedPaymentMethod) {
-        setSelectedPaymentMethod(defaultMethod.id);
-      }
+      // Backend returns { success: true, accounts: [...] }
+      const accounts = response.accounts || response.data || response || [];
+      // Ensure we always set an array
+      setDepositAccounts(Array.isArray(accounts) ? accounts : []);
     } catch (error) {
-      console.error('Error loading payment methods:', error);
-      setError('Failed to load payment methods');
+      console.error('Error loading deposit accounts:', error);
+      setError('Failed to load deposit accounts');
+      setDepositAccounts([]); // Set empty array on error
     }
   };
 
   useEffect(() => {
     if (isOpen) {
-      loadPaymentMethods();
+      fetchDepositAccounts();
     }
   }, [isOpen]);
 
-  const handleCreatePaymentMethod = async () => {
-    if (!newPaymentMethod.name.trim()) {
-      setError('Payment method name is required');
-      return;
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.deposit-dropdown')) {
+        setIsDepositDropdownOpen(false);
+        setDepositSearchTerm('');
+      }
+    };
+
+    if (isDepositDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
     }
 
-    setIsCreatingPaymentMethod(true);
-    setError('');
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDepositDropdownOpen]);
 
-    try {
-      const created = await PaymentAPI.createPaymentMethod(newPaymentMethod);
-      await loadPaymentMethods();
-      setSelectedPaymentMethod(created.id);
-      setShowCreatePaymentMethod(false);
-      setNewPaymentMethod({
-        name: '',
-        type: 'cash',
-        accountNumber: '',
-        bankName: '',
-        isDefault: false
-      });
-    } catch (error) {
-      console.error('Error creating payment method:', error);
-      setError('Failed to create payment method');
-    } finally {
-      setIsCreatingPaymentMethod(false);
-    }
+  // Helper functions for deposit accounts
+  const getSelectedDepositAccount = () => {
+    if (!Array.isArray(depositAccounts)) return null;
+    return depositAccounts.find(acc => acc.id === formData.depositToAccountId);
+  };
+
+  const getFilteredDepositAccounts = () => {
+    if (!Array.isArray(depositAccounts)) return [];
+    if (!depositSearchTerm) return depositAccounts;
+    return depositAccounts.filter(account =>
+      account.name.toLowerCase().includes(depositSearchTerm.toLowerCase()) ||
+      account.code.toLowerCase().includes(depositSearchTerm.toLowerCase())
+    );
+  };
+
+  const handleDepositAccountSelect = (accountId: string) => {
+    setFormData(prev => ({ ...prev, depositToAccountId: accountId }));
+    setIsDepositDropdownOpen(false);
+    setDepositSearchTerm('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleRecordPayment = async () => {
-    if (!selectedPaymentMethod) {
-      setError('Please select a payment method');
+    if (!formData.depositToAccountId) {
+      setError('Please select a deposit account');
       return;
     }
 
@@ -136,42 +137,38 @@ const PaymentRecordModal: React.FC<PaymentRecordModalProps> = ({
     setError('');
 
     try {
-      await PaymentAPI.recordPayment(invoice.id, {
+      // OPTIMIZATION: Close modal immediately for better UX
+      onClose();
+      
+      // OPTIMIZATION: Call onPaymentRecorded early for optimistic update
+      onPaymentRecorded();
+
+      // Use the payments-received API to record the payment
+      await paymentReceivedAPI.createPaymentReceived({
+        customerId: undefined, // Invoice payment, not from a customer
         amount: parseFloat(amount),
-        paymentMethod: selectedPaymentMethod,
-        reference: reference.trim() || undefined,
-        notes: notes.trim() || undefined,
-        paymentDate
+        paymentDate,
+        paymentMode: formData.paymentMode,
+        depositToAccountId: formData.depositToAccountId,
+        referenceNumber: reference,
+        notes,
+        invoiceAllocations: [{
+          invoiceId: invoice.id,
+          amountAllocated: parseFloat(amount)
+        }]
       });
 
-      onPaymentRecorded();
-      onClose();
+      console.log('✅ Payment recorded successfully');
     } catch (error) {
       console.error('Error recording payment:', error);
-      setError('Failed to record payment');
+      // Re-open modal and show error if the payment failed
+      // User will need to retry
+      alert('Failed to record payment. Please try again.');
+      // You could also trigger a data refresh here to revert optimistic updates
+      onPaymentRecorded();
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const getPaymentMethodIcon = (type: PaymentMethod['type']) => {
-    switch (type) {
-      case 'cash': return <Banknote className="h-4 w-4" />;
-      case 'bank_transfer': return <Building className="h-4 w-4" />;
-      case 'credit_card': return <CreditCard className="h-4 w-4" />;
-      case 'debit_card': return <CreditCard className="h-4 w-4" />;
-      case 'check': return <FileText className="h-4 w-4" />;
-      case 'digital_wallet': return <Smartphone className="h-4 w-4" />;
-      case 'cryptocurrency': return <DollarSign className="h-4 w-4" />;
-      default: return <Wallet className="h-4 w-4" />;
-    }
-  };
-
-  const formatPaymentMethodDisplay = (pm: PaymentMethod) => {
-    let display = pm.name;
-    if (pm.bankName) display += ` (${pm.bankName})`;
-    if (pm.accountNumber) display += ` •••${pm.accountNumber.slice(-4)}`;
-    return display;
   };
 
   if (!isOpen) return null;
@@ -203,258 +200,252 @@ const PaymentRecordModal: React.FC<PaymentRecordModalProps> = ({
 
           {/* Content */}
           <div className="p-6 space-y-6">
+            {/* Error Message */}
             {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
-                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                <span className="text-sm text-red-700">{error}</span>
+              <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+                <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
 
             {/* Invoice Summary */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">Invoice Total:</span>
-                <span className="text-lg font-bold text-gray-900">
-                  {new Intl.NumberFormat('en-US', {
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-600">Invoice Total:</span>
+                  <span className="ml-2 font-semibold text-gray-900">
+                    {new Intl.NumberFormat('en-US', {
+                      style: 'currency',
+                      currency: invoice.currency
+                    }).format(invoice.totalAmount)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Remaining:</span>
+                  <span className="ml-2 font-semibold text-green-600">
+                    {new Intl.NumberFormat('en-US', {
+                      style: 'currency',
+                      currency: invoice.currency
+                    }).format(invoice.totalAmount - invoice.paidAmount)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Form */}
+            <div className="space-y-4">
+              {/* Payment Amount */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Amount *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                    {invoice.currency}
+                  </span>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    step="0.01"
+                    min="0"
+                    max={invoice.totalAmount - invoice.paidAmount}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="0.00"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Remaining balance: {new Intl.NumberFormat('en-US', {
                     style: 'currency',
                     currency: invoice.currency
-                  }).format(invoice.totalAmount)}
-                </span>
+                  }).format(invoice.totalAmount - invoice.paidAmount)}
+                </p>
               </div>
-            </div>
 
-            {/* Payment Amount */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Payment Amount *
-              </label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max={invoice.totalAmount - invoice.paidAmount}
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="0.00"
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Remaining balance: {new Intl.NumberFormat('en-US', {
-                  style: 'currency',
-                  currency: invoice.currency
-                }).format(invoice.totalAmount - invoice.paidAmount)}
-              </p>
-            </div>
-
-            {/* Payment Method Selection */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Payment Method *
+              {/* Payment Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Date *
                 </label>
-                <button
-                  onClick={() => setShowCreatePaymentMethod(true)}
-                  className="text-sm text-green-600 hover:text-green-700 flex items-center space-x-1"
-                >
-                  <Plus className="h-3 w-3" />
-                  <span>Add New</span>
-                </button>
-              </div>
-
-              {showCreatePaymentMethod ? (
-                <div className="border border-gray-300 rounded-lg p-4 space-y-4 bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900">Create Payment Method</h4>
-                    <button
-                      onClick={() => setShowCreatePaymentMethod(false)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={newPaymentMethod.name}
-                        onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, name: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                        placeholder="e.g., Primary Business Account"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Type *
-                      </label>
-                      <select
-                        value={newPaymentMethod.type}
-                        onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, type: e.target.value as PaymentMethod['type'] }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                      >
-                        <option value="cash">Cash</option>
-                        <option value="bank_transfer">Bank Transfer</option>
-                        <option value="credit_card">Credit Card</option>
-                        <option value="debit_card">Debit Card</option>
-                        <option value="check">Check</option>
-                        <option value="digital_wallet">Digital Wallet</option>
-                        <option value="cryptocurrency">Cryptocurrency</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-
-                    {(newPaymentMethod.type === 'bank_transfer' || newPaymentMethod.type === 'credit_card' || newPaymentMethod.type === 'debit_card') && (
-                      <>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Bank Name
-                          </label>
-                          <input
-                            type="text"
-                            value={newPaymentMethod.bankName || ''}
-                            onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, bankName: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                            placeholder="Bank name"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Account Number
-                          </label>
-                          <input
-                            type="text"
-                            value={newPaymentMethod.accountNumber || ''}
-                            onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, accountNumber: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                            placeholder="Last 4 digits"
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="setDefault"
-                      checked={newPaymentMethod.isDefault}
-                      onChange={(e) => setNewPaymentMethod(prev => ({ ...prev, isDefault: e.target.checked }))}
-                      className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="setDefault" className="text-sm text-gray-700">
-                      Set as default payment method
-                    </label>
-                  </div>
-
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      onClick={() => setShowCreatePaymentMethod(false)}
-                      className="px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleCreatePaymentMethod}
-                      disabled={isCreatingPaymentMethod}
-                      className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {isCreatingPaymentMethod ? 'Creating...' : 'Create'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {paymentMethods.map((pm) => (
-                    <div
-                      key={pm.id}
-                      onClick={() => setSelectedPaymentMethod(pm.id)}
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                        selectedPaymentMethod === pm.id
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className={`p-2 rounded-lg ${
-                            selectedPaymentMethod === pm.id ? 'bg-green-100' : 'bg-gray-100'
-                          }`}>
-                            {getPaymentMethodIcon(pm.type)}
-                          </div>
-                          <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="font-medium text-gray-900">
-                                {formatPaymentMethodDisplay(pm)}
-                              </span>
-                              {pm.isDefault && (
-                                <Star className="h-3 w-3 text-yellow-500 fill-current" />
-                              )}
-                            </div>
-                            <span className="text-xs text-gray-500 capitalize">
-                              {pm.type.replace('_', ' ')}
-                            </span>
-                          </div>
-                        </div>
-                        {selectedPaymentMethod === pm.id && (
-                          <Check className="h-5 w-5 text-green-600" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Payment Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Payment Date *
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="date"
                   value={paymentDate}
                   onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  required
                 />
               </div>
-            </div>
 
-            {/* Reference */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Reference (Optional)
-              </label>
-              <input
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                placeholder="Transaction reference, check number, etc."
-              />
-            </div>
+              {/* Payment Mode */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Mode *
+                </label>
+                <select
+                  name="paymentMode"
+                  value={formData.paymentMode}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                >
+                  <option value="CASH">Cash</option>
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                  <option value="CHECK">Check</option>
+                  <option value="CREDIT_CARD">Credit Card</option>
+                  <option value="DEBIT_CARD">Debit Card</option>
+                  <option value="MOBILE_PAYMENT">Mobile Payment</option>
+                  <option value="ONLINE_TRANSFER">Online Transfer</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
 
-            {/* Notes */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Notes (Optional)
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                placeholder="Additional notes about this payment..."
-              />
+              {/* Deposit To */}
+              <div className="relative deposit-dropdown">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Deposit To *
+                </label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsDepositDropdownOpen(!isDepositDropdownOpen)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-left flex items-center justify-between"
+                  >
+                    <span className={formData.depositToAccountId ? 'text-gray-900' : 'text-gray-500'}>
+                      {formData.depositToAccountId 
+                        ? `${getSelectedDepositAccount()?.code} - ${getSelectedDepositAccount()?.name}`
+                        : 'Select deposit account...'
+                      }
+                    </span>
+                    <svg className={`w-5 h-5 text-gray-400 transition-transform ${isDepositDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {isDepositDropdownOpen && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-80 overflow-hidden">
+                      {/* Search Input */}
+                      <div className="p-3 border-b border-gray-200">
+                        <input
+                          type="text"
+                          placeholder="Search accounts..."
+                          value={depositSearchTerm}
+                          onChange={(e) => setDepositSearchTerm(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                          autoFocus
+                        />
+                      </div>
+                      
+                      {/* Scrollable Options */}
+                      <div className="max-h-60 overflow-y-auto">
+                        {getFilteredDepositAccounts().length === 0 ? (
+                          <div className="px-4 py-3 text-gray-500 text-sm">No accounts found</div>
+                        ) : (
+                          <>
+                            {/* Cash Accounts */}
+                            {getFilteredDepositAccounts().filter(acc => acc.type === 'CASH').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  💰 Cash
+                                </div>
+                                {getFilteredDepositAccounts().filter(acc => acc.type === 'CASH').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handleDepositAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-green-50 focus:bg-green-50 focus:outline-none ${
+                                      formData.depositToAccountId === account.id ? 'bg-green-100 text-green-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Bank Accounts */}
+                            {getFilteredDepositAccounts().filter(acc => acc.type === 'BANK').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  🏦 Bank
+                                </div>
+                                {getFilteredDepositAccounts().filter(acc => acc.type === 'BANK').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handleDepositAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-green-50 focus:bg-green-50 focus:outline-none ${
+                                      formData.depositToAccountId === account.id ? 'bg-green-100 text-green-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Other Current Assets */}
+                            {getFilteredDepositAccounts().filter(acc => acc.type === 'OTHER_CURRENT_ASSET').length > 0 && (
+                              <div>
+                                <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  📁 Other Current Assets
+                                </div>
+                                {getFilteredDepositAccounts().filter(acc => acc.type === 'OTHER_CURRENT_ASSET').map((account) => (
+                                  <button
+                                    key={account.id}
+                                    type="button"
+                                    onClick={() => handleDepositAccountSelect(account.id)}
+                                    className={`w-full px-4 py-3 text-left hover:bg-green-50 focus:bg-green-50 focus:outline-none ${
+                                      formData.depositToAccountId === account.id ? 'bg-green-100 text-green-900' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{account.code} - {account.name}</div>
+                                    {account.description && (
+                                      <div className="text-xs text-gray-500 mt-1">{account.description}</div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Reference */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reference (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="Transaction reference, check number, etc."
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Additional notes about this payment..."
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -468,7 +459,7 @@ const PaymentRecordModal: React.FC<PaymentRecordModalProps> = ({
             </button>
             <button
               onClick={handleRecordPayment}
-              disabled={isSubmitting || !selectedPaymentMethod || !amount}
+              disabled={isSubmitting || !formData.depositToAccountId || !amount}
               className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               {isSubmitting ? 'Recording...' : 'Record Payment'}
@@ -480,4 +471,4 @@ const PaymentRecordModal: React.FC<PaymentRecordModalProps> = ({
   );
 };
 
-export default PaymentRecordModal; 
+export default PaymentRecordModal;

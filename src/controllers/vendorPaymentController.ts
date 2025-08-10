@@ -308,7 +308,22 @@ export const createVendorPayment = async (req: Request, res: Response) => {
     const journalId = `VP-${paymentNumber}-${Date.now()}`;
     
     const result = await prisma.$transaction(async (tx) => {
-      // Create vendor payment record
+      // Resolve paid through references
+      const paidThroughAccount = validatedData.paidThroughAccountId
+        ? await tx.account.findFirst({
+            where: { id: validatedData.paidThroughAccountId, tenantId },
+          })
+        : null;
+
+      let paidThroughMethod = null as null | { id: string; name: string; type: string };
+      if (validatedData.paidThroughId) {
+        paidThroughMethod = await tx.paymentMethod.findFirst({
+          where: { id: validatedData.paidThroughId, tenantId, isActive: true },
+          select: { id: true, name: true, type: true },
+        });
+      }
+
+      // Create vendor payment record (avoid FK violation by using resolved ids only)
       const vendorPayment = await tx.vendorPayment.create({
         data: {
           paymentNumber,
@@ -318,8 +333,8 @@ export const createVendorPayment = async (req: Request, res: Response) => {
           taxAmount: validatedData.taxAmount,
           paymentDate: validatedData.paymentDate ? new Date(validatedData.paymentDate) : new Date(),
           paymentMode: validatedData.paymentMode,
-          paidThroughId: validatedData.paidThroughId,
-          paidThroughAccountId: validatedData.paidThroughAccountId, // NEW: Chart of Accounts integration
+          paidThroughId: paidThroughMethod?.id ?? null,
+          paidThroughAccountId: paidThroughAccount?.id ?? null,
           referenceNumber: validatedData.referenceNumber,
           taxDeducted: validatedData.taxDeducted,
           notes: validatedData.notes,
@@ -469,42 +484,32 @@ export const createVendorPayment = async (req: Request, res: Response) => {
       }
 
       // 4. Credit: Paid Through Account (ASSET) - reduces cash/bank balance
-      // First get the payment method to determine the account to use
-      const paymentMethod = await tx.paymentMethod.findUnique({
-        where: { id: validatedData.paidThroughId }
-      });
-
-      if (!paymentMethod) {
-        throw new Error('Payment method not found');
+      // Prefer explicit Chart of Accounts account if provided
+      let creditAccountId: string | null = null;
+      if (paidThroughAccount) {
+        creditAccountId = paidThroughAccount.id;
+      } else if (paidThroughMethod) {
+        // Map payment method to a default cash/bank account (fallback to code 1000)
+        const fallbackAccount = await tx.account.findFirst({
+          where: { tenantId, code: '1000' },
+        });
+        creditAccountId = fallbackAccount?.id || null;
       }
 
-      // Find the corresponding cash/bank account based on payment method type
-      let paidThroughAccount;
-      if (paymentMethod.type === 'cash') {
-        paidThroughAccount = await tx.account.findFirst({
-          where: { tenantId, code: '1000' } // Cash Account
-        });
-      } else {
-        // For bank transfers, credit cards, etc., use Cash/Bank account
-        paidThroughAccount = await tx.account.findFirst({
-          where: { tenantId, code: '1000' } // Cash/Bank Account
-        });
-      }
-
-      if (!paidThroughAccount) {
-        throw new Error('Paid through account not found. Please ensure Chart of Accounts is properly set up.');
+      if (!creditAccountId) {
+        throw new Error('Unable to resolve paid through account. Please set up Chart of Accounts or select a deposit account.');
       }
 
       await tx.entry.create({
         data: {
-          accountId: paidThroughAccount.id,
+          accountId: creditAccountId,
           bookId: book.id,
           tenantId,
           amount: netAmount,
           currency: 'MMK',
           exchangeRate: 1,
           type: 'CREDIT',
-          memo: `Payment to ${vendor.name} via ${paymentMethod.name}`,
+          memo: `Payment to ${vendor.name}`,
           reference: paymentNumber,
           journalId,
           postedAt: new Date()
@@ -513,21 +518,51 @@ export const createVendorPayment = async (req: Request, res: Response) => {
 
       // Create bank transaction for outgoing payment
       try {
-        // Create bank transaction for the payment method used
-        const paymentMethod = await tx.paymentMethod.findFirst({
-          where: { 
-            id: validatedData.paidThroughId,
-            tenantId,
-            isActive: true 
-          }
-        });
+        // Resolve a PaymentMethod to attach the bank transaction to
+        let resolvedPaymentMethodId: string | null = null;
 
-        if (paymentMethod) {
+        if (paidThroughMethod?.id) {
+          resolvedPaymentMethodId = paidThroughMethod.id;
+        } else if (paidThroughAccount) {
+          // Try to find a matching PaymentMethod by name or by type mapping
+          const byName = await tx.paymentMethod.findFirst({
+            where: {
+              tenantId,
+              isActive: true,
+              name: paidThroughAccount.name,
+            },
+            select: { id: true }
+          });
+
+          if (byName) {
+            resolvedPaymentMethodId = byName.id;
+          } else {
+            // Type mapping from Account.type -> PaymentMethod.type
+            const mappedType = paidThroughAccount.type === 'BANK'
+              ? 'BANK_ACCOUNT'
+              : paidThroughAccount.type === 'CASH'
+                ? 'CASH'
+                : undefined;
+
+            if (mappedType) {
+              const byType = await tx.paymentMethod.findFirst({
+                where: { tenantId, isActive: true, type: mappedType },
+                select: { id: true },
+                orderBy: { createdAt: 'asc' }
+              });
+              if (byType) {
+                resolvedPaymentMethodId = byType.id;
+              }
+            }
+          }
+        }
+
+        if (resolvedPaymentMethodId) {
           // Create outgoing bank transaction (negative amount for withdrawals)
           await tx.bankTransaction.create({
             data: {
               tenantId,
-              paymentMethodId: paymentMethod.id,
+              paymentMethodId: resolvedPaymentMethodId,
               description: `Payment to ${vendor.name} - ${paymentNumber}`,
               amount: -netAmount, // Negative amount for withdrawals
               type: 'WITHDRAWAL',
@@ -548,7 +583,7 @@ export const createVendorPayment = async (req: Request, res: Response) => {
 
       return vendorPayment;
     }, {
-      timeout: 15000, // 15 seconds timeout
+      timeout: 30000,
     });
 
     // Fetch the created payment with full details
@@ -570,12 +605,15 @@ export const createVendorPayment = async (req: Request, res: Response) => {
       vendorPayment: paymentWithDetails
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating vendor payment:', error);
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Validation error', details: error.errors });
     }
-    res.status(500).json({ error: 'Failed to create vendor payment' });
+    if (error?.code === 'P2003') {
+      return res.status(400).json({ error: 'Foreign key constraint failed', details: error?.meta });
+    }
+    res.status(500).json({ error: 'Failed to create vendor payment', details: error?.message || String(error) });
   }
 };
 

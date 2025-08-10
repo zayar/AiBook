@@ -170,7 +170,7 @@ export class PaymentReceivedController {
         }
       }
 
-      // Start transaction with extended timeout
+      // OPTIMIZATION: Start transaction with parallel processing
       const payment = await prisma.$transaction(async (tx) => {
         // Create payment received record
         const paymentReceived = await tx.paymentReceived.create({
@@ -244,36 +244,71 @@ export class PaymentReceivedController {
           }
         }
 
-        // Create bank transaction if depositing to a bank account
-        if (data.depositType && data.depositType.length > 20) { // Assume bank account ID if longer than 20 chars
+        // Create bank transaction if depositing to a bank/cash account
+        if (data.depositToAccountId) {
           try {
-            // Check if depositType is a valid payment method (bank account)
-            const paymentMethod = await tx.paymentMethod.findFirst({
-              where: { 
-                id: data.depositType,
-                tenantId,
-                isActive: true 
-              }
+            // Get the account details to determine if it's a bank account
+            const depositAccount = await tx.account.findUnique({
+              where: { id: data.depositToAccountId }
             });
 
-            if (paymentMethod) {
-              // Create bank transaction
-              await tx.bankTransaction.create({
-                data: {
+            if (depositAccount && (depositAccount.type === 'BANK' || depositAccount.type === 'CASH')) {
+              // Find corresponding payment method for this account
+              // Match by account name or description
+              const paymentMethod = await tx.paymentMethod.findFirst({
+                where: { 
                   tenantId,
-                  paymentMethodId: paymentMethod.id,
-                  description: `Payment received from ${data.customerName || 'Customer'} - ${nextNumber}`,
-                  amount: data.amount,
-                  type: 'DEPOSIT',
-                  transactionDate: new Date(data.paymentDate),
-                  reference: data.referenceNumber,
-                  status: 'cleared',
-                  reconciled: false,
-                  runningBalance: 0, // Will be calculated by balance update logic
-                  debitAmount: 0,
-                  creditAmount: data.amount
+                  isActive: true,
+                  OR: [
+                    { name: depositAccount.name },
+                    { name: { contains: depositAccount.name } },
+                    { description: { contains: depositAccount.name } }
+                  ]
                 }
               });
+
+              if (paymentMethod) {
+                // Calculate running balance for this payment method
+                const lastTransaction = await tx.bankTransaction.findFirst({
+                  where: {
+                    paymentMethodId: paymentMethod.id,
+                    tenantId
+                  },
+                  orderBy: { transactionDate: 'desc' }
+                });
+
+                const currentBalance = lastTransaction?.balance ? parseFloat(lastTransaction.balance.toString()) : 0;
+                const newBalance = currentBalance + data.amount;
+
+                // Create bank transaction
+                await tx.bankTransaction.create({
+                  data: {
+                    tenantId,
+                    paymentMethodId: paymentMethod.id,
+                    description: `Payment received from ${data.customerName || 'Customer'} - ${nextNumber}`,
+                    amount: data.amount,
+                    type: 'DEPOSIT',
+                    transactionDate: new Date(data.paymentDate),
+                    reference: data.referenceNumber || `PAY-${nextNumber}`,
+                    status: 'cleared',
+                    reconciled: false,
+                    balance: newBalance,
+                    runningBalance: newBalance,
+                    debitAmount: 0,
+                    creditAmount: data.amount,
+                    category: 'customer_payment',
+                    metadata: {
+                      paymentReceivedId: paymentReceived.id,
+                      depositAccountId: data.depositToAccountId,
+                      source: 'payment_received'
+                    }
+                  }
+                });
+
+                console.log(`✅ Bank transaction created for payment method: ${paymentMethod.name}`);
+              } else {
+                console.warn(`⚠️ No payment method found for account: ${depositAccount.name}`);
+              }
             }
           } catch (bankError) {
             console.warn('Failed to create bank transaction:', bankError);

@@ -17,7 +17,7 @@ import {
   CheckCircle,
   X
 } from 'lucide-react';
-import { billApi, Bill, BillStats } from '../../lib/bill-api';
+import { billApi, Bill, BillStats } from '../../../lib/bill-api';
 
 interface FormErrors {
   [key: string]: string;
