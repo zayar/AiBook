@@ -2,8 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-import { AccountingService } from '@/accounting/AccountingService';
-import { UserRole } from '@/types';
+import { AccountingService } from '../accounting/AccountingService';
+import { UserRole } from '../types';
 
 export class TenantController {
   /**
@@ -117,13 +117,13 @@ export class TenantController {
 
         // Create basic account structure
         const accounts = [
-          { code: '1000', name: 'Assets', type: 'ASSET' as const },
-          { code: '1100', name: 'Current Assets', type: 'ASSET' as const },
-          { code: '1111', name: 'Checking Account', type: 'ASSET' as const },
-          { code: '2000', name: 'Liabilities', type: 'LIABILITY' as const },
+          { code: '1000', name: 'Assets', type: 'OTHER_ASSET' as const },
+          { code: '1100', name: 'Current Assets', type: 'OTHER_CURRENT_ASSET' as const },
+          { code: '1111', name: 'Checking Account', type: 'CASH' as const },
+          { code: '2000', name: 'Liabilities', type: 'OTHER_LIABILITY' as const },
           { code: '3000', name: 'Equity', type: 'EQUITY' as const },
           { code: '3100', name: 'Owner Equity', type: 'EQUITY' as const },
-          { code: '4000', name: 'Revenue', type: 'REVENUE' as const },
+          { code: '4000', name: 'Revenue', type: 'INCOME' as const },
           { code: '5000', name: 'Expenses', type: 'EXPENSE' as const },
         ];
 

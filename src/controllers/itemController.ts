@@ -39,7 +39,8 @@ const ItemListSchema = z.object({
  */
 export const listItems = async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.tenant?.tenantId;
+    // Prefer tenant from middleware; fall back to header and default dev tenant
+    const tenantId = req.tenant?.tenantId || (req.headers['x-tenant-id'] as string) || (process.env.NODE_ENV === 'development' ? (process.env.DEFAULT_TENANT_ID || 'default') : undefined);
     if (!tenantId) {
       res.status(400).json({ error: 'Tenant ID is required' });
       return;

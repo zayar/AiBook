@@ -12,6 +12,8 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { FinancialCopilotService } from '../ai/services/FinancialCopilotService';
 import { VectorStoreService } from '../ai/services/VectorStoreService';
+import { EnhancedFinancialMetricsService } from '../services/enhancedFinancialMetricsService';
+import { redisCacheService } from '../services/redisCacheService';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -438,6 +440,92 @@ export class AICopilotController {
       console.error('Performance metrics error:', error);
       res.status(500).json({
         error: 'Failed to fetch performance metrics',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * 📊 GET ENHANCED FINANCIAL METRICS
+   * GET /api/v1/ai/copilot/metrics/enhanced
+   */
+  static async getEnhancedFinancialMetrics(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      const { period = 'current_month', force_refresh = 'false' } = req.query;
+      const forceRefresh = force_refresh === 'true';
+
+      console.log(`📊 Getting enhanced financial metrics for tenant: ${tenantId}, period: ${period}`);
+
+      const metricsService = new EnhancedFinancialMetricsService(tenantId);
+
+      // Force refresh if requested
+      if (forceRefresh) {
+        await metricsService.invalidateCache(period as string);
+      }
+
+      const startTime = Date.now();
+      const metrics = await metricsService.getFinancialMetrics(period as string);
+      const executionTime = Date.now() - startTime;
+
+      // Get cache stats for monitoring
+      const cacheStats = await redisCacheService.getCacheStats(tenantId);
+
+      res.json({
+        success: true,
+        data: {
+          metrics,
+          performance: {
+            executionTime,
+            fromCache: executionTime < 100, // Likely from cache if very fast
+            cacheStats
+          }
+        },
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('Enhanced financial metrics error:', error);
+      res.status(500).json({
+        error: 'Failed to fetch enhanced financial metrics',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * 🔄 INVALIDATE FINANCIAL CACHE
+   * POST /api/v1/ai/copilot/cache/invalidate
+   */
+  static async invalidateFinancialCache(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: 'Tenant ID is required' });
+        return;
+      }
+
+      const { pattern } = req.body;
+
+      console.log(`🗑️ Invalidating cache for tenant: ${tenantId}, pattern: ${pattern}`);
+
+      const success = await redisCacheService.invalidateTenantCache(tenantId, pattern);
+
+      res.json({
+        success,
+        message: success ? 'Cache invalidated successfully' : 'Cache invalidation failed',
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('Cache invalidation error:', error);
+      res.status(500).json({
+        error: 'Failed to invalidate cache',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }

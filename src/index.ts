@@ -11,6 +11,7 @@ import { tenantMiddleware } from './middleware/tenantMiddleware';
 import { authMiddleware } from './middleware/authMiddleware';
 import apiRoutes from './routes';
 import superAdminRoutes from './routes/superAdminRoutes';
+import { financialEventIntegration } from './services/financialEventIntegration';
 
 // Load environment variables
 dotenv.config();
@@ -53,8 +54,15 @@ app.get('/health', (req, res) => {
 // Super admin routes (outside tenant middleware)
 app.use('/superadmin', superAdminRoutes);
 
-// Apply tenant middleware, then tenant context storage (auth disabled for testing)
-app.use('/api/v1', tenantMiddleware, tenantContextMiddleware, apiRoutes);
+// Apply tenant middleware, then tenant context storage, then auth middleware
+app.use('/api/v1', tenantMiddleware, tenantContextMiddleware, authMiddleware, apiRoutes);
+
+// Simple dev route to expose items/org quickly without headers if needed
+if (process.env.NODE_ENV === 'development') {
+  app.get('/api/v1/dev/ping', (req, res) => {
+    res.json({ ok: true, tenant: req.tenant?.tenantId || process.env.DEFAULT_TENANT_ID || 'default' });
+  });
+}
 
 // Development test endpoint (completely separate from API routes)
 app.get('/dev/test', (req, res) => {
@@ -112,11 +120,19 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Cashflow Copilot server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🏢 Multi-tenancy: Enhanced mode enabled`);
   console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+  
+  // 🚀 Initialize streaming infrastructure
+  try {
+    await financialEventIntegration.initialize();
+    console.log('✅ Financial event streaming initialized');
+  } catch (error) {
+    console.warn('⚠️ Failed to initialize streaming (continuing without streaming):', (error as Error).message);
+  }
 });
 
 export default app; 

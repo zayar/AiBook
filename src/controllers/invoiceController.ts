@@ -1,15 +1,16 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import firebaseService from '@/services/firebaseService';
+import firebaseService from '../services/firebaseService';
 import { getFirestore } from 'firebase-admin/firestore';
 // Import enhanced tenant middleware types
-import '@/middleware/enhancedTenantMiddleware';
+import '../middleware/enhancedTenantMiddleware';
 
 const prisma = new PrismaClient();
 import { z } from 'zod';
-import aiService from '@/services/aiService';
-import { AccountingService } from '@/accounting/AccountingService';
+import aiService from '../services/aiService';
+import { AccountingService } from '../accounting/AccountingService';
 import { BankTransactionService } from '../services/bankTransactionService';
+import { financialEventIntegration } from '../services/financialEventIntegration';
 
 // Share link handler function
 async function createOrRefreshShareLinkHandler(req: Request, res: Response): Promise<void> {
@@ -152,6 +153,37 @@ class InvoiceController {
       // AI Enhancement: Auto-categorize invoice items if not provided (simplified for development)
       console.log('✅ Invoice created successfully:', invoice.invoiceNumber);
       
+      // 🚀 Publish invoice creation event to streaming pipeline
+      try {
+        await financialEventIntegration.publishInvoiceCreated({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          tenantId: invoice.tenantId,
+          customerId: invoice.customerId,
+          customerName: invoice.customer?.name || 'Unknown Customer',
+          issueDate: invoice.issueDate,
+          dueDate: invoice.dueDate,
+          currency: invoice.currency,
+          subtotal: parseFloat(invoice.subtotal.toString()),
+          taxAmount: parseFloat(invoice.taxAmount.toString()),
+          totalAmount: parseFloat(invoice.totalAmount.toString()),
+          status: invoice.status,
+          items: invoice.items.map(item => ({
+            description: item.description,
+            quantity: parseFloat(item.quantity.toString()),
+            unitPrice: parseFloat(item.unitPrice.toString()),
+            totalPrice: parseFloat(item.totalPrice.toString()),
+            taxRate: parseFloat(item.taxRate.toString()),
+          })),
+          terms: invoice.termsConditions || undefined,
+          recurring: invoice.recurring,
+        });
+        console.log('📤 Invoice creation event published to stream');
+      } catch (streamError) {
+        console.warn('⚠️ Failed to publish invoice event to stream:', (streamError as Error).message);
+        // Don't fail the invoice creation if streaming fails
+      }
+      
       // TODO: Re-enable AI categorization and accounting entries when services are ready
       // for (const item of invoice.items) {
       //   if (!item.accountCode) {
@@ -182,13 +214,22 @@ class InvoiceController {
         journalEntries = await accountingService.createInvoiceJournalEntries(invoice);
         console.log('✅ Invoice created as SENT - journal entries created');
 
-        // Calculate and record COGS for inventory items
+        // Calculate and record COGS for inventory items (guard: only for items linked to inventory and with available layers)
         for (const item of invoice.items) {
           if (item.inventoryItemId) {
             try {
               console.log(`🔄 Calculating COGS for inventory item: ${item.inventoryItemId}`);
-              
+              // Ensure sufficient available layers before calculating
+              const acct = new AccountingService({ tenantId });
+              const summary = await acct.getInventoryCostSummary(item.inventoryItemId);
+              const qty = parseFloat(item.quantity.toString());
+              if ((summary?.totalQuantityOnHand || 0) < qty) {
+                console.warn(`⚠️ Skipping COGS: insufficient layers for item ${item.inventoryItemId}. On hand ${summary?.totalQuantityOnHand || 0}, needed ${qty}`);
+                continue;
+              }
+
               const cogsResult = await accountingService.calculateCOGS({
+                // Use the real invoice item id to persist linkage
                 invoiceItemId: item.id,
                 inventoryItemId: item.inventoryItemId,
                 quantitySold: parseFloat(item.quantity.toString()),
@@ -299,20 +340,29 @@ class InvoiceController {
         }
       });
 
-      // Create journal entries for revenue recognition (ALE accounting flow)
+        // Create journal entries for revenue recognition (ALE accounting flow)
       try {
         const accountingService = new AccountingService({ tenantId });
         const journalEntries = await accountingService.createInvoiceJournalEntries(updatedInvoice);
         
         console.log('✅ Invoice sent and journal entries created:', journalEntries);
 
-        // Calculate and record COGS for inventory items
+        // Calculate and record COGS for inventory items (guard: only for items linked to inventory and with available layers)
         const cogsCalculations = [];
         for (const item of updatedInvoice.items) {
           if (item.inventoryItemId) {
             try {
               console.log(`🔄 Calculating COGS for inventory item: ${item.inventoryItemId}`);
-              
+              // Ensure sufficient available layers before calculating
+              const acct = new AccountingService({ tenantId });
+              const summary = await acct.getInventoryCostSummary(item.inventoryItemId);
+              const qty = parseFloat(item.quantity.toString());
+              if ((summary?.totalQuantityOnHand || 0) < qty) {
+                console.warn(`⚠️ Skipping COGS: insufficient layers for item ${item.inventoryItemId}. On hand ${summary?.totalQuantityOnHand || 0}, needed ${qty}`);
+                continue;
+              }
+
+              // Real invoice item id is now persisted, safe to store
               const cogsResult = await accountingService.calculateCOGS({
                 invoiceItemId: item.id,
                 inventoryItemId: item.inventoryItemId,

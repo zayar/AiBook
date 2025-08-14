@@ -11,7 +11,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=mysql://root:password@mysql:3306/aibook
+      - DATABASE_URL=mysql://gtadmin:gtapp456$%^@34.123.50.107:3306/aiAccount?sslmode=disable
       - REDIS_URL=redis://redis:6379
       - DEFAULT_TENANT_ID=default
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
@@ -20,7 +20,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
     depends_on:
-      - mysql
       - redis
     volumes:
       - ./logs:/app/logs
@@ -46,24 +45,6 @@ services:
       - aibook-network
     restart: unless-stopped
 
-  # MySQL Database
-  mysql:
-    image: mysql:8.0
-    ports:
-      - "3306:3306"
-    environment:
-      - MYSQL_ROOT_PASSWORD=password
-      - MYSQL_DATABASE=aibook
-      - MYSQL_USER=aibook
-      - MYSQL_PASSWORD=aibook_password
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - aibook-network
-    restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password
-
   # Redis Cache
   redis:
     image: redis:7-alpine
@@ -85,9 +66,7 @@ services:
     ports:
       - "5555:5555"
     environment:
-      - DATABASE_URL=mysql://root:password@mysql:3306/aibook
-    depends_on:
-      - mysql
+      - DATABASE_URL=mysql://gtadmin:gtapp456$%^@34.123.50.107:3306/aiAccount?sslmode=disable
     networks:
       - aibook-network
     command: npx prisma studio --hostname 0.0.0.0 --port 5555
@@ -101,9 +80,7 @@ services:
       dockerfile: Dockerfile
       target: builder
     environment:
-      - DATABASE_URL=mysql://root:password@mysql:3306/aibook
-    depends_on:
-      - mysql
+      - DATABASE_URL=mysql://gtadmin:gtapp456$%^@34.123.50.107:3306/aiAccount?sslmode=disable
     networks:
       - aibook-network
     command: npx prisma migrate deploy
@@ -117,10 +94,9 @@ services:
       dockerfile: Dockerfile
       target: builder
     environment:
-      - DATABASE_URL=mysql://root:password@mysql:3306/aibook
+      - DATABASE_URL=mysql://gtadmin:gtapp456$%^@34.123.50.107:3306/aiAccount?sslmode=disable
       - DEFAULT_TENANT_ID=default
     depends_on:
-      - mysql
       - db-migrate
     networks:
       - aibook-network
@@ -129,7 +105,6 @@ services:
       - tools
 
 volumes:
-  mysql_data:
   redis_data:
 
 networks:

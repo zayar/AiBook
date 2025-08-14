@@ -1,16 +1,23 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
+  baseURL: '/api/v1', // Use Next.js proxy
   withCredentials: false,
-  headers: {
-    'X-Tenant-ID': 'default',
-  },
 });
 
-// Request interceptor for debugging
+// Request interceptor for debugging and auth
 api.interceptors.request.use(
   (config) => {
+    // Add tenant ID
+    const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+    config.headers['x-tenant-id'] = tenantId;
+    
+    // Add auth token if available
+    const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
     console.log('🔄 Vendor Payment API Request:', config.method?.toUpperCase(), config.url);
     return config;
   },

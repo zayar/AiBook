@@ -6,7 +6,7 @@ export type SuperAdminTenant = {
   _count?: { accounts: number; entries: number; books: number };
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+const API_BASE = '/api/v1'; // Use Next.js proxy
 const TOKEN_KEY = 'superadmin_token';
 
 export function getToken(): string | null {

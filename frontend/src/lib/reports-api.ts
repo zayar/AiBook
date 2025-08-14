@@ -78,11 +78,11 @@ export class ReportsAPI {
   private static getHeaders() {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'X-Tenant-ID': 'default',
+      'x-tenant-id': 'default',
     };
 
     // Add auth token if available (for frontend proxy authentication)
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }

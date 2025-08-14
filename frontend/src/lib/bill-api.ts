@@ -3,10 +3,11 @@ const API_URL = '/api/v1';
 
 // Helper function to get authentication headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+  const tenantId = localStorage.getItem('tenantId') || 'default';
   return {
     'Content-Type': 'application/json',
-    'X-Tenant-ID': 'default',
+    'x-tenant-id': tenantId,
     ...(token && { Authorization: `Bearer ${token}` })
   };
 };

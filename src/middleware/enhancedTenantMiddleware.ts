@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { TenantContext } from '@/types';
+import { TenantContext } from '../types';
 import { AppError } from './errorHandler';
 import { PrismaClient } from '@prisma/client';
 import { AsyncLocalStorage } from 'async_hooks';

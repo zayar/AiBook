@@ -196,12 +196,69 @@ const AIStatus = () => (
   </div>
 );
 
+// Helper function to render AI messages with report links
+const renderAIMessage = (content: string) => {
+  // Split content by "Related Reports:" section
+  const parts = content.split('📋 **Related Reports:**');
+  const mainContent = parts[0];
+  const reportSection = parts[1];
+
+  return (
+    <div>
+      <p className="text-sm whitespace-pre-wrap">{mainContent}</p>
+      
+      {reportSection && (
+        <div className="mt-3 border-t border-gray-200 pt-3">
+          <p className="text-xs font-medium text-gray-600 mb-2">📋 Related Reports:</p>
+          <div className="flex flex-col gap-1">
+            {reportSection.split('•').slice(1).map((report, index) => {
+              const reportText = report.trim();
+              if (!reportText) return null;
+              
+              const [title, description] = reportText.split(' - ');
+              const reportUrl = getReportUrl(title);
+              
+              return (
+                <button
+                  key={index}
+                  onClick={() => window.location.href = reportUrl}
+                  className="text-left p-2 text-xs bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                >
+                  <div className="font-medium text-blue-700">{title}</div>
+                  {description && (
+                    <div className="text-blue-600 opacity-80">{description}</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Helper function to map report names to URLs
+const getReportUrl = (reportName: string): string => {
+  const reportMap: { [key: string]: string } = {
+    'Profit & Loss Statement': '/reports/profit-loss',
+    'Cash Flow Report': '/reports/cash-flow',
+    'Trial Balance': '/reports/trial-balance',
+    'Account Transactions': '/reports/account-transactions',
+    'Items & Inventory': '/items',
+    'General Ledger': '/reports/general-ledger',
+    'Journal Entries': '/reports/journal-entries'
+  };
+  
+  return reportMap[reportName] || '/reports';
+};
+
 // AI Chat Component
 const AIChat = ({ onClose, baseCurrency = 'USD' }: { onClose?: () => void; baseCurrency?: string }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      content: "👋 Hello! I'm your AI Financial Assistant. I'm ready to help with financial analysis and insights, but I notice you haven't connected any financial accounts yet. Once you connect your accounts, I'll be able to provide real-time analysis, generate reports, and give personalized recommendations. How can I assist you today?",
+      content: "👋 Hello! I'm your AI Financial Assistant. I can analyze your business performance, provide insights about your revenue, expenses, cash flow, customers, and much more. What would you like to know about your finances?",
       sender: 'ai',
       timestamp: new Date(),
       type: 'text'
@@ -227,35 +284,273 @@ const AIChat = ({ onClose, baseCurrency = 'USD' }: { onClose?: () => void; baseC
     setIsLoading(true);
 
     try {
-      // Simulate AI response for now
-      setTimeout(() => {
-        const aiResponse: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          content: getAIResponse(inputMessage),
-          sender: 'ai',
-          timestamp: new Date(),
-          type: 'text'
-        };
-        setMessages(prev => [...prev, aiResponse]);
-        setIsLoading(false);
-      }, 1500);
-    } catch (error) {
+      // Get real AI response with business data
+      const aiResponseContent = await getAIResponseWithData(inputMessage);
+      
+      const aiResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: aiResponseContent,
+        sender: 'ai',
+        timestamp: new Date(),
+        type: 'text'
+      };
+      setMessages(prev => [...prev, aiResponse]);
       setIsLoading(false);
+    } catch (error) {
+      console.error('AI Chat error:', error);
+      const errorResponse: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: `I apologize, but I'm having trouble accessing your financial data right now. Please try again in a moment. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        sender: 'ai',
+        timestamp: new Date(),
+        type: 'text'
+      };
+      setMessages(prev => [...prev, errorResponse]);
+      setIsLoading(false);
+    }
+  };
+
+  const getAIResponseWithData = async (message: string): Promise<string> => {
+    const lowerMessage = message.toLowerCase();
+    
+    try {
+      if (lowerMessage.includes('profit') || lowerMessage.includes('p&l')) {
+        // Fetch real P&L data from the actual report endpoint
+        const response = await fetch('/api/v1/reports/profit-loss?period=this_month', {
+          headers: { 'X-Tenant-ID': 'default' }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.summary) {
+          const summary = data.summary;
+          return `📈 **This Month's Profit Analysis:**
+          
+💰 **Revenue:** MMK ${summary.totalRevenue ? summary.totalRevenue.toLocaleString() : '0'}
+💸 **Expenses:** MMK ${summary.totalExpenses ? summary.totalExpenses.toLocaleString() : '0'}
+📊 **Net Profit:** MMK ${summary.netIncome ? summary.netIncome.toLocaleString() : '0'}
+📈 **Profit Margin:** ${summary.profitMargin ? `${summary.profitMargin.toFixed(1)}%` : '0%'}
+
+${summary.netIncome > 0 ? '🎉 Great job! Your business is profitable this month.' : '⚠️ Consider reviewing expenses to improve profitability.'}
+
+**Revenue Breakdown:**
+${data.revenue?.accounts?.map((acc: any) => `• ${acc.name}: MMK ${acc.amount.toLocaleString()}`).join('\n') || '• No revenue accounts found'}
+
+**Expense Breakdown:**
+${data.expenses?.accounts?.map((acc: any) => `• ${acc.name}: MMK ${acc.amount.toLocaleString()}`).join('\n') || '• No expense accounts found'}
+
+Would you like to see more detailed analysis or recommendations?`;
+        }
+      } else if (lowerMessage.includes('cash flow')) {
+        // Fetch cash flow data
+        const response = await fetch('/api/v1/ai/copilot/metrics/enhanced?period=current_month', {
+          headers: { 'X-Tenant-ID': 'default' }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.data && data.data.metrics) {
+          const metrics = data.data.metrics;
+          return `💧 **Cash Flow Analysis:**
+          
+💰 **Current Month Flow:** ${metrics.cashFlow ? `$${metrics.cashFlow.toLocaleString()}` : '$0'}
+📊 **Total Revenue:** ${metrics.totalRevenue ? `$${metrics.totalRevenue.toLocaleString()}` : '$0'}
+💸 **Total Expenses:** ${metrics.totalExpenses ? `$${metrics.totalExpenses.toLocaleString()}` : '$0'}
+📈 **Net Income:** ${metrics.netIncome ? `$${metrics.netIncome.toLocaleString()}` : '$0'}
+
+${metrics.cashFlow > 0 ? '✅ Positive cash flow - your business is generating cash.' : '⚠️ Monitor cash flow closely to ensure liquidity.'}
+
+Would you like to see payment aging analysis or accounts receivable details?`;
+        }
+      } else if (lowerMessage.includes('customer') || lowerMessage.includes('top customer')) {
+        // Fetch customer data
+        const response = await fetch('/api/v1/customers', {
+          headers: { 'X-Tenant-ID': 'default' }
+        });
+        const data = await response.json();
+        
+        if (data.customers && data.customers.length > 0) {
+          const topCustomers = data.customers.slice(0, 3);
+          let customerList = topCustomers.map((customer: any, index: number) => 
+            `${index + 1}. **${customer.name}** - ${customer.email || 'No email'}`
+          ).join('\n');
+          
+          return `👥 **Top Customers:**
+
+${customerList}
+
+📊 **Total Customers:** ${data.customers.length}
+💰 **Payment Terms:** Most customers have ${data.customers[0]?.paymentTerms || 30} day terms
+✅ **Active Customers:** ${data.customers.filter((c: any) => c.isActive).length}
+
+💡 **Customer Insights:**
+• Monitor payment terms for cash flow optimization
+• Consider loyalty programs for top customers
+• Review credit limits for growth opportunities
+
+Would you like detailed analysis for any specific customer or retention strategies?`;
+        } else {
+          return `👥 **Customer Analysis:**
+
+📊 No customers found in your database yet.
+
+💡 **Next Steps:**
+• Add your first customer to start tracking revenue
+• Import customers from your existing system
+• Set up customer payment terms and credit limits
+
+Would you like help setting up your first customer?`;
+        }
+      } else if (lowerMessage.includes('expense') || lowerMessage.includes('biggest expense')) {
+        // Fetch expense breakdown
+        const response = await fetch('/api/v1/ai/copilot/metrics/enhanced?period=current_month', {
+          headers: { 'X-Tenant-ID': 'default' }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+          const metrics = data.data;
+          return `💰 **Expense Category Breakdown:**
+          
+📊 **Total Expenses:** ${metrics.totalExpenses ? `$${metrics.totalExpenses.toLocaleString()}` : '$0'}
+📈 **Top Categories:**
+${metrics.expenseCategories ? metrics.expenseCategories.map((cat: any, i: number) => 
+  `${i + 1}. **${cat.category}** - $${cat.amount.toLocaleString()}`).join('\n') : '• Operating Expenses\n• Administrative Costs\n• Marketing & Sales'}
+
+💡 **Insights:** ${metrics.expenseInsight || 'Review recurring expenses for optimization opportunities.'}
+
+Would you like cost-saving recommendations or detailed expense analysis?`;
+        }
+      } else if (lowerMessage.includes('invoice') || lowerMessage.includes('collection')) {
+        // Fetch invoice aging data
+        const response = await fetch('/api/v1/ai/copilot/metrics/enhanced?period=current_month', {
+          headers: { 'X-Tenant-ID': 'default' }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+          const metrics = data.data;
+          return `📧 **Invoice Collection Analysis:**
+          
+⏱️ **Average Collection Time:** ${metrics.avgCollectionDays || 'Calculating...'} days
+💰 **Outstanding Amount:** ${metrics.outstandingInvoices ? `$${metrics.outstandingInvoices.toLocaleString()}` : '$0'}
+📊 **Collection Rate:** ${metrics.collectionRate ? `${metrics.collectionRate.toFixed(1)}%` : '0%'}
+
+**Aging Breakdown:**
+• 0-30 days: ${metrics.aging30 || '$0'}
+• 31-60 days: ${metrics.aging60 || '$0'}
+• 60+ days: ${metrics.aging90 || '$0'}
+
+${metrics.collectionRate > 90 ? '✅ Excellent collection performance!' : '⚠️ Consider follow-up on overdue invoices.'}`;
+        }
+      } else if (lowerMessage.includes('bank') || lowerMessage.includes('balance')) {
+        // Fetch bank balance data
+        const response = await fetch('/api/v1/banking', {
+          headers: { 'X-Tenant-ID': 'default' }
+        });
+        const data = await response.json();
+        
+        if (data.success && data.accounts?.length > 0) {
+          const totalBalance = data.accounts.reduce((sum: number, acc: any) => sum + (acc.currentBalance || 0), 0);
+          const accountList = data.accounts.map((acc: any) => 
+            `• **${acc.accountName || 'Business Account'}** - $${(acc.currentBalance || 0).toLocaleString()}`
+          ).join('\n');
+          
+          return `🏦 **Bank Account Summary:**
+          
+💰 **Total Cash Position:** $${totalBalance.toLocaleString()}
+
+**Account Balances:**
+${accountList}
+
+📊 **Accounts:** ${data.accounts.length} connected
+${totalBalance > 10000 ? '✅ Strong cash position.' : '⚠️ Monitor cash levels closely.'}
+
+Would you like cash flow forecasting or payment scheduling assistance?`;
+        }
+      } else if (lowerMessage.includes('vendor') || lowerMessage.includes('spending pattern')) {
+        // Fetch vendor spending data
+        const response = await fetch('/api/v1/vendors', {
+          headers: { 'X-Tenant-ID': 'default' }
+        });
+        const data = await response.json();
+        
+        if (data.vendors && data.vendors.length > 0) {
+          const topVendors = data.vendors.slice(0, 3);
+          const vendorList = topVendors.map((vendor: any, index: number) => 
+            `${index + 1}. **${vendor.name}** - ${vendor.email || 'No email'}`
+          ).join('\n');
+          
+          return `🏪 **Vendor Analysis:**
+
+**Your Top Vendors:**
+${vendorList}
+
+📊 **Total Vendors:** ${data.vendors.length}
+💰 **Payment Terms:** Most vendors have ${data.vendors[0]?.paymentTerms || 30} day terms
+✅ **Active Vendors:** ${data.vendors.filter((v: any) => v.isActive).length}
+
+💡 **Vendor Management Tips:**
+• Review payment terms for better cash flow
+• Consider bulk purchase discounts
+• Evaluate vendor performance vs. cost
+• Negotiate better terms with top vendors
+
+Would you like vendor performance analysis or contract optimization suggestions?`;
+        } else {
+          return `🏪 **Vendor Analysis:**
+
+📊 No vendors found in your database yet.
+
+💡 **Next Steps:**
+• Add your suppliers and service providers
+• Import vendors from your existing system
+• Set up payment terms and contact information
+
+Would you like help setting up your first vendor?`;
+        }
+      }
+      
+      // Fallback: Call the actual AI copilot API for general queries
+      const response = await fetch('/api/v1/ai/copilot/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-ID': 'default'
+        },
+        body: JSON.stringify({ query: message })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data?.answer) {
+          return data.data.answer;
+        }
+      }
+      
+      // Final fallback if API fails
+      return getAIResponse(message);
+      
+    } catch (error) {
+      console.error('Error fetching business data:', error);
+      return `I'm having trouble accessing your business data right now. Let me help with general information: ${getAIResponse(message)}`;
     }
   };
 
   const getAIResponse = (message: string): string => {
     const lowerMessage = message.toLowerCase();
-    if (lowerMessage.includes('revenue') || lowerMessage.includes('income')) {
-      return `📊 I'd love to analyze your revenue data, but I don't see any connected financial accounts yet. Once you connect your bank accounts or accounting software, I'll be able to provide detailed revenue analysis, trends, and growth insights in ${baseCurrency}. Would you like help setting up your first connection?`;
-    } else if (lowerMessage.includes('expense') || lowerMessage.includes('cost')) {
-      return `💰 I can help identify expense patterns and cost-saving opportunities, but I need access to your financial data first. Connect your accounts and I'll analyze your spending, categorize expenses, and suggest optimizations in ${baseCurrency}. Shall I guide you through the setup process?`;
-    } else if (lowerMessage.includes('profit') || lowerMessage.includes('p&l')) {
+    if (lowerMessage.includes('profit') || lowerMessage.includes('p&l')) {
       return `📈 I'm ready to generate comprehensive P&L reports and profit analysis, but I need your financial data first. Once connected, I can track profit margins, compare periods, and identify growth opportunities in ${baseCurrency}. Would you like to start by connecting your accounting software?`;
     } else if (lowerMessage.includes('cash flow')) {
       return `💧 Cash flow forecasting is one of my specialties! However, I need access to your transaction history and account balances first. Connect your accounts and I'll provide real-time cash flow analysis with predictive insights in ${baseCurrency}. Ready to get started?`;
-    } else if (lowerMessage.includes('tax')) {
-      return `🏛️ I can help with tax planning and compliance, but I'll need access to your financial records first. Once connected, I can track deductible expenses, estimate tax liability, and ensure you're ready for filing deadlines. All amounts will be calculated in ${baseCurrency}. Would you like help connecting your accounts?`;
+    } else if (lowerMessage.includes('customer') || lowerMessage.includes('top customer')) {
+      return `👥 I can identify your top customers by revenue, payment history, and frequency, but I need access to your sales data first. Once connected, I'll rank customers, analyze buying patterns, and suggest retention strategies in ${baseCurrency}. Shall we connect your invoicing system?`;
+    } else if (lowerMessage.includes('expense') || lowerMessage.includes('biggest expense')) {
+      return `💰 I can help identify your largest expense categories and cost-saving opportunities, but I need access to your financial data first. Connect your accounts and I'll analyze spending patterns, categorize expenses, and suggest optimizations in ${baseCurrency}. Ready to connect?`;
+    } else if (lowerMessage.includes('invoice') || lowerMessage.includes('collection')) {
+      return `📧 I can track invoice aging, payment patterns, and collection efficiency, but I need access to your invoicing data first. Once connected, I'll monitor outstanding invoices, predict payment delays, and suggest collection strategies in ${baseCurrency}. Want to get started?`;
+    } else if (lowerMessage.includes('bank') || lowerMessage.includes('balance')) {
+      return `🏦 I can monitor your bank balances across multiple accounts and provide real-time cash position updates, but I need to connect to your banking data first. Once linked, I'll track balances, forecast cash needs, and alert you to important changes in ${baseCurrency}. Ready to connect?`;
+    } else if (lowerMessage.includes('vendor') || lowerMessage.includes('spending pattern')) {
+      return `🏪 I can analyze your vendor spending patterns, payment terms, and cost trends, but I need access to your purchase data first. Once connected, I'll identify your top vendors, track spending efficiency, and suggest negotiation opportunities in ${baseCurrency}. Shall we begin?`;
     } else if (lowerMessage.includes('connect') || lowerMessage.includes('setup')) {
       return `🔗 Great! To get started, you can connect your bank accounts, credit cards, or accounting software like QuickBooks. This allows me to provide real-time insights and analysis. I recommend starting with your primary business bank account. All financial data will be displayed in ${baseCurrency}. Would you like me to guide you through the connection process?`;
     } else if (lowerMessage.includes('currency')) {
@@ -266,10 +561,13 @@ const AIChat = ({ onClose, baseCurrency = 'USD' }: { onClose?: () => void; baseC
   };
 
   const quickSuggestions = [
-    "How do I connect my bank account?",
-    "What data do you need to get started?",
-    "Help me set up my accounts",
-    `What currency is this in? (${baseCurrency})`
+    "What's this month's profit?",
+    "Show me cash flow trends", 
+    "Who are my top customers?",
+    "What are my biggest expenses?",
+    "How's my invoice collection?",
+    "What's my bank balance?",
+    "Show vendor spending patterns"
   ];
 
   if (isMinimized) {
@@ -323,7 +621,13 @@ const AIChat = ({ onClose, baseCurrency = 'USD' }: { onClose?: () => void; baseC
                   : 'bg-gray-50 text-gray-900'
               }`}
             >
-              <p className="text-sm">{message.content}</p>
+              {message.sender === 'ai' ? (
+                <div>
+                  {renderAIMessage(message.content)}
+                </div>
+              ) : (
+                <p className="text-sm">{message.content}</p>
+              )}
               <p className={`text-xs mt-1 ${
                 message.sender === 'user' ? 'text-blue-100' : 'text-gray-500'
               }`}>

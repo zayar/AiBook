@@ -4,6 +4,8 @@ const prisma = new PrismaClient();
 import { ChartOfAccountsEngine, AccountBalance } from './ChartOfAccountsEngine';
 import { AccountType } from '@prisma/client';
 import { FiscalYearService, FiscalPeriod } from '../../services/FiscalYearService';
+import { redisCacheService } from '../../services/redisCacheService';
+import { FinancialMetrics, CachedReport } from '../../types/cache';
 
 export interface FinancialStatement {
   statement: 'BALANCE_SHEET' | 'INCOME_STATEMENT' | 'CASH_FLOW' | 'TRIAL_BALANCE';
@@ -78,6 +80,18 @@ export class ReportingEngine {
    * Standard balance sheet with proper classifications
    */
   async generateBalanceSheet(asOfDate: Date = new Date()): Promise<FinancialStatement> {
+    const cacheKey = `balance_sheet_${asOfDate.toISOString().split('T')[0]}`;
+    
+    // Try to get from cache first
+    const cachedBalanceSheet = await redisCacheService.getCachedReport(this.tenantId, 'balance_sheet', cacheKey);
+    if (cachedBalanceSheet) {
+      console.log(`🎯 Cache HIT: Balance Sheet for ${this.tenantId}`);
+      return cachedBalanceSheet.data;
+    }
+
+    console.log(`🔄 Cache MISS: Generating Balance Sheet for ${this.tenantId}`);
+    const startTime = Date.now();
+    
     const accounts = await this.getAccountBalancesAsOf(asOfDate);
     
     const assets = accounts.filter(acc => this.getAccountCategory(acc.type) === 'ASSET');
@@ -108,7 +122,8 @@ export class ReportingEngine {
       }
     };
 
-    return {
+    const executionTime = Date.now() - startTime;
+    const balanceSheet: FinancialStatement = {
       statement: 'BALANCE_SHEET',
       period: {
         startDate: asOfDate,
@@ -123,6 +138,26 @@ export class ReportingEngine {
       },
       generatedAt: new Date()
     };
+
+    // Cache the result for 30 minutes
+    const reportToCache: CachedReport = {
+      reportId: `balance_sheet_${this.tenantId}_${Date.now()}`,
+      tenantId: this.tenantId,
+      reportType: 'balance_sheet',
+      period: cacheKey,
+      data: balanceSheet,
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        executionTime,
+        recordCount: accounts.length,
+        filters: { asOfDate: asOfDate.toISOString() }
+      }
+    };
+
+    await redisCacheService.cacheReport(this.tenantId, 'balance_sheet', reportToCache, 1800); // 30 minutes TTL
+    console.log(`✅ Cached Balance Sheet for ${this.tenantId} (${executionTime}ms)`);
+
+    return balanceSheet;
   }
 
   /**

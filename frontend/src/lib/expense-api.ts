@@ -1,16 +1,28 @@
 import axios from 'axios';
 
+// Use Next.js rewrite proxy to backend
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
+  baseURL: '/api/v1',
   withCredentials: false,
-  headers: {
-    'X-Tenant-ID': 'default',
-  },
 });
 
 // Request interceptor for debugging
 api.interceptors.request.use(
   (config) => {
+    // Attach tenant and auth token dynamically
+    const tenantId =
+      (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) ||
+      'default';
+    const token =
+      (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) ||
+      undefined;
+
+    config.headers = config.headers || {};
+    (config.headers as any)['x-tenant-id'] = tenantId;
+    if (token) {
+      (config.headers as any).Authorization = `Bearer ${token}`;
+    }
+
     console.log('🔄 Expense API Request:', config.method?.toUpperCase(), config.url);
     return config;
   },

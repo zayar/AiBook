@@ -188,58 +188,60 @@ export class COGSEngine {
 
       const averageCostPerUnit = totalCOGS / input.quantitySold;
 
-      // Create COGS calculation record
-      const cogsCalculation = await prisma.$transaction(async (tx) => {
-        // Create the COGS calculation
-        const calculation = await tx.cOGSCalculation.create({
+      // Create COGS calculation record (sequential writes to avoid interactive txn timeouts)
+      // If this invocation is not tied to a real invoice item (manual calc),
+      // avoid violating FK by storing a synthetic invoiceItemId as null.
+      const invoiceItemIdForStorage = input.invoiceItemId && input.invoiceItemId.startsWith('TEMP-')
+        ? undefined
+        : input.invoiceItemId;
+
+      const cogsCalculation = await prisma.cOGSCalculation.create({
+        data: {
+          // optional FK when manual
+          invoiceItemId: invoiceItemIdForStorage as any,
+          inventoryItemId: input.inventoryItemId,
+          quantitySold: input.quantitySold,
+          totalCOGS: totalCOGS,
+          averageCostPerUnit: averageCostPerUnit,
+          calculationDate: input.saleDate,
+          tenantId: input.tenantId
+        }
+      });
+
+      // Record layer consumptions and update remaining quantities
+      for (const consumption of layersConsumed) {
+        await prisma.cOGSLayerConsumption.create({
           data: {
-            invoiceItemId: input.invoiceItemId,
-            inventoryItemId: input.inventoryItemId,
-            quantitySold: input.quantitySold,
-            totalCOGS: totalCOGS,
-            averageCostPerUnit: averageCostPerUnit,
-            calculationDate: input.saleDate,
+            cogsCalculationId: cogsCalculation.id,
+            costLayerId: consumption.costLayerId,
+            quantityConsumed: consumption.quantityConsumed,
+            unitCost: consumption.unitCost,
+            totalCost: consumption.totalCost,
             tenantId: input.tenantId
           }
         });
 
-        // Record layer consumptions and update remaining quantities
-        for (const consumption of layersConsumed) {
-          await tx.cOGSLayerConsumption.create({
-            data: {
-              cogsCalculationId: calculation.id,
-              costLayerId: consumption.costLayerId,
-              quantityConsumed: consumption.quantityConsumed,
-              unitCost: consumption.unitCost,
-              totalCost: consumption.totalCost,
-              tenantId: input.tenantId
-            }
-          });
+        // Update cost layer remaining quantity
+        const layer = availableLayers.find(l => l.id === consumption.costLayerId)!;
+        const newRemainingQuantity = layer.remainingQuantity - consumption.quantityConsumed;
 
-          // Update cost layer remaining quantity
-          const layer = availableLayers.find(l => l.id === consumption.costLayerId)!;
-          const newRemainingQuantity = layer.remainingQuantity - consumption.quantityConsumed;
-          
-          await tx.inventoryCostLayer.update({
-            where: { id: consumption.costLayerId },
-            data: {
-              remainingQuantity: newRemainingQuantity,
-              isFullyConsumed: newRemainingQuantity <= 0
-            }
-          });
-        }
-
-        // Update inventory item quantity
-        await tx.inventoryItem.update({
-          where: { id: input.inventoryItemId },
+        await prisma.inventoryCostLayer.update({
+          where: { id: consumption.costLayerId },
           data: {
-            quantityOnHand: {
-              decrement: input.quantitySold
-            }
+            remainingQuantity: newRemainingQuantity,
+            isFullyConsumed: newRemainingQuantity <= 0
           }
         });
+      }
 
-        return calculation;
+      // Update inventory item quantity
+      await prisma.inventoryItem.update({
+        where: { id: input.inventoryItemId },
+        data: {
+          quantityOnHand: {
+            decrement: input.quantitySold
+          }
+        }
       });
 
       // Create journal entries for COGS
@@ -266,7 +268,86 @@ export class COGSEngine {
         journalEntryId
       };
 
-    } catch (error) {
+    } catch (error: any) {
+      // Fallback path if interactive transaction times out (P2028)
+      if (error?.code === 'P2028') {
+        console.warn('⚠️ COGS transaction timeout detected. Retrying without transaction...');
+        // Recompute layers to ensure fresh state
+        const freshLayers = await this.getAvailableCostLayers(input.inventoryItemId);
+        if (freshLayers.length === 0) {
+          throw new Error(`No cost layers available for inventory item ${input.inventoryItemId}`);
+        }
+
+        let remainingToSell = input.quantitySold;
+        let totalCOGS = 0;
+        const layersConsumed: LayerConsumption[] = [];
+        for (const layer of freshLayers) {
+          if (remainingToSell <= 0) break;
+          const qty = Math.min(remainingToSell, layer.remainingQuantity);
+          const cost = qty * layer.unitCost;
+          layersConsumed.push({
+            costLayerId: layer.id,
+            quantityConsumed: qty,
+            unitCost: layer.unitCost,
+            totalCost: cost,
+            layerDate: layer.purchaseDate
+          });
+          totalCOGS += cost;
+          remainingToSell -= qty;
+        }
+
+        const averageCostPerUnit = totalCOGS / input.quantitySold;
+
+        // Create records sequentially (non-transactional fallback)
+        const calculation = await prisma.cOGSCalculation.create({
+          data: {
+            invoiceItemId: input.invoiceItemId,
+            inventoryItemId: input.inventoryItemId,
+            quantitySold: input.quantitySold,
+            totalCOGS,
+            averageCostPerUnit,
+            calculationDate: input.saleDate,
+            tenantId: input.tenantId
+          }
+        });
+
+        for (const consumption of layersConsumed) {
+          await prisma.cOGSLayerConsumption.create({
+            data: {
+              cogsCalculationId: calculation.id,
+              costLayerId: consumption.costLayerId,
+              quantityConsumed: consumption.quantityConsumed,
+              unitCost: consumption.unitCost,
+              totalCost: consumption.totalCost,
+              tenantId: input.tenantId
+            }
+          });
+
+          const newRemaining = freshLayers.find(l => l.id === consumption.costLayerId)!.remainingQuantity - consumption.quantityConsumed;
+          await prisma.inventoryCostLayer.update({
+            where: { id: consumption.costLayerId },
+            data: { remainingQuantity: newRemaining, isFullyConsumed: newRemaining <= 0 }
+          });
+        }
+
+        await prisma.inventoryItem.update({
+          where: { id: input.inventoryItemId },
+          data: { quantityOnHand: { decrement: input.quantitySold } }
+        });
+
+        const journalEntryId = await this.createCOGSJournalEntry({
+          inventoryItemId: input.inventoryItemId,
+          totalCOGS,
+          saleDate: input.saleDate,
+          reference: input.reference || `COGS-${calculation.id}`
+        });
+
+        await prisma.cOGSCalculation.update({ where: { id: calculation.id }, data: { journalEntryId } });
+
+        console.log(`✅ COGS calculated (fallback): $${totalCOGS.toFixed(2)} for ${input.quantitySold} units`);
+        return { id: calculation.id, totalCOGS, averageCostPerUnit, layersConsumed, journalEntryId };
+      }
+
       console.error('❌ Error calculating COGS:', error);
       throw error;
     }
@@ -443,31 +524,24 @@ export class COGSEngine {
       // Calculate proportional return of each cost layer
       const returnRatio = input.returnQuantity / parseFloat(originalCOGS.quantitySold.toString());
       
-      await prisma.$transaction(async (tx) => {
-        for (const consumption of originalCOGS.layerConsumptions) {
-          const returnQuantityFromLayer = parseFloat(consumption.quantityConsumed.toString()) * returnRatio;
-          
-          // Restore quantity to the cost layer
-          await tx.inventoryCostLayer.update({
-            where: { id: consumption.costLayerId },
-            data: {
-              remainingQuantity: {
-                increment: returnQuantityFromLayer
-              },
-              isFullyConsumed: false
-            }
-          });
-        }
+      // Perform sequential updates to avoid interactive transaction issues
+      for (const consumption of originalCOGS.layerConsumptions) {
+        const returnQuantityFromLayer = parseFloat(consumption.quantityConsumed.toString()) * returnRatio;
 
-        // Update inventory item quantity
-        await tx.inventoryItem.update({
-          where: { id: originalCOGS.inventoryItemId },
+        await prisma.inventoryCostLayer.update({
+          where: { id: consumption.costLayerId },
           data: {
-            quantityOnHand: {
-              increment: input.returnQuantity
-            }
+            remainingQuantity: { increment: returnQuantityFromLayer },
+            isFullyConsumed: false
           }
         });
+      }
+
+      await prisma.inventoryItem.update({
+        where: { id: originalCOGS.inventoryItemId },
+        data: {
+          quantityOnHand: { increment: input.returnQuantity }
+        }
       });
 
       // Create reversal journal entry

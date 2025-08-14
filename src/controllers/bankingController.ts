@@ -21,6 +21,45 @@ const paymentMethodSchema = z.object({
 });
 
 export class BankingController {
+  // Simple test method for payment method creation
+  static async createPaymentMethodSimple(req: Request, res: Response) {
+    console.log('🔥 SIMPLE CREATE PAYMENT METHOD TEST');
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant ID is required' });
+      }
+
+      const { name, type } = req.body;
+      if (!name || !type) {
+        return res.status(400).json({ error: 'Name and type are required' });
+      }
+
+      const paymentMethod = await prisma.paymentMethod.create({
+        data: {
+          name: name,
+          type: type,
+          tenantId: tenantId,
+          currency: 'MMK',
+          isActive: true,
+          isDefault: false
+        }
+      });
+
+      console.log('✅ Simple payment method created:', paymentMethod);
+      return res.status(201).json({
+        message: 'Simple payment method created successfully',
+        paymentMethod: paymentMethod
+      });
+    } catch (error) {
+      console.error('❌ Simple create error:', error);
+      return res.status(500).json({ 
+        error: 'Simple create failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
   // Get all payment methods (bank accounts & credit cards)
   static async getPaymentMethods(req: Request, res: Response) {
     try {
@@ -43,62 +82,52 @@ export class BankingController {
         where.isActive = isActive === 'true';
       }
 
-      const [paymentMethods, totalCount] = await Promise.all([
-        prisma.paymentMethod.findMany({
-          where,
-          orderBy: [
-            { isDefault: 'desc' },
-            { name: 'asc' }
-          ],
-          skip,
-          take: Number(limit)
-        }),
-        prisma.paymentMethod.count({ where })
-      ]);
+      // Use safer approach to avoid Prisma engine panic
+      const paymentMethods = await prisma.paymentMethod.findMany({
+        where,
+        include: {
+          chartAccount: true // Include the linked chart account
+        },
+        orderBy: [
+          { isDefault: 'desc' },
+          { name: 'asc' }
+        ],
+        skip,
+        take: Number(limit)
+      });
+      
+      const totalCount = paymentMethods.length;
 
-      // Calculate actual balances for each payment method
-      const methodsWithBalances = await Promise.all(
-        paymentMethods.map(async (method) => {
-          // Get all transactions for this payment method
-          const transactions = await prisma.bankTransaction.findMany({
-            where: {
-              paymentMethodId: method.id,
-              tenantId
-            },
-            orderBy: { transactionDate: 'desc' }
-          });
+      // Compute balances from bank transactions to ensure UI reflects actual activity
+      const paymentMethodIds = paymentMethods.map(m => m.id);
+      const allTx = await prisma.bankTransaction.findMany({
+        where: { tenantId, paymentMethodId: { in: paymentMethodIds } },
+        select: { paymentMethodId: true, amount: true, type: true }
+      });
 
-          // Calculate balance from transactions
-          const balance = transactions.reduce((sum, tx) => {
-            const amount = parseFloat(tx.amount.toString());
-            return tx.type === 'DEPOSIT' ? sum + amount : sum - amount;
-          }, 0);
+      const pmIdToComputedBalance: Record<string, number> = {};
+      for (const tx of allTx) {
+        if (tx.paymentMethodId) { // Add null check
+          const sign = tx.type === 'DEPOSIT' ? 1 : -1;
+          pmIdToComputedBalance[tx.paymentMethodId] = (pmIdToComputedBalance[tx.paymentMethodId] || 0) + Number(tx.amount) * sign;
+        }
+      }
 
-          // Calculate reconciled balance
-          const reconciledTransactions = transactions.filter(tx => tx.reconciled);
-          const reconciledBalance = reconciledTransactions.reduce((sum, tx) => {
-            const amount = parseFloat(tx.amount.toString());
-            return tx.type === 'DEPOSIT' ? sum + amount : sum - amount;
-          }, 0);
-
-          // Count unreconciled transactions
-          const unreconciledTransactions = transactions.filter(tx => !tx.reconciled).length;
-
-          // Find last reconciled date
-          const lastReconciledTx = reconciledTransactions[0];
-          const lastReconciled = lastReconciledTx ? lastReconciledTx.transactionDate : null;
-
-          return {
-            ...method,
-            balance,
-            reconciledBalance,
-            unreconciledTransactions,
-            lastReconciled,
-            transactionCount: transactions.length,
-            paymentCount: transactions.filter(tx => tx.type === 'DEPOSIT').length
-          };
-        })
-      );
+      // Merge computed balances with chart account metadata
+      const methodsWithBalances = paymentMethods.map(method => {
+        const computed = pmIdToComputedBalance[method.id] ?? 0;
+        return {
+          ...method,
+          balance: computed,
+          reconciledBalance: computed, // simple assumption for now
+          unreconciledTransactions: 0,
+          lastReconciled: null,
+          transactionCount: 0,
+          paymentCount: 0,
+          chartAccountCode: method.chartAccount?.code || null,
+          chartAccountName: method.chartAccount?.name || null
+        };
+      });
 
       res.json({
         paymentMethods: methodsWithBalances,
@@ -117,125 +146,125 @@ export class BankingController {
 
   // Create new payment method (bank account or credit card)
   static async createPaymentMethod(req: Request, res: Response) {
+    console.log('🏦 CREATING BANK ACCOUNT WITH CHART OF ACCOUNTS INTEGRATION');
+    console.log('📋 Request body:', req.body);
+
+    let createdChartAccountId: string | null = null;
+
     try {
       const tenantId = req.tenant?.tenantId;
       if (!tenantId) {
+        console.log('❌ No tenant ID found');
         return res.status(400).json({ error: 'Tenant ID is required' });
       }
 
-      const validatedData = paymentMethodSchema.parse(req.body);
-
-      // If this is set as default, unset other defaults
-      if (validatedData.isDefault) {
-        await prisma.paymentMethod.updateMany({
-          where: { tenantId, isDefault: true },
-          data: { isDefault: false }
-        });
+      const { name, type, accountNumber, bankName, description } = req.body;
+      if (!name || !type) {
+        return res.status(400).json({ error: 'Name and type are required' });
       }
 
-      // Check if account number already exists for this tenant (if provided)
-      if (validatedData.accountNumber) {
-        const existingMethod = await prisma.paymentMethod.findFirst({
-          where: {
-            tenantId,
-            accountNumber: validatedData.accountNumber
-          }
-        });
+      console.log('✅ Starting bank account creation with chart of accounts integration...');
 
-        if (existingMethod) {
-          return res.status(400).json({ 
-            error: 'Account number already exists',
-            field: 'accountNumber'
-          });
-        }
+      // Step 1: Find or create the default book for this tenant
+      let defaultBook = await prisma.book.findFirst({ where: { tenantId, name: 'General Ledger' } });
+      if (!defaultBook) {
+        defaultBook = await prisma.book.create({
+          data: { name: 'General Ledger', tenantId, currency: 'MMK' }
+        });
+        console.log('🆕 Created General Ledger book');
       }
 
-      // Use transaction to create both payment method and chart of accounts entry
-      const result = await prisma.$transaction(async (tx) => {
-        // Create the payment method
-        const paymentMethod = await tx.paymentMethod.create({
+      // Step 2: Find the parent Bank Accounts account (1111). If missing, create it under 1110 if present
+      let parentBankAccount = await prisma.account.findFirst({
+        where: { tenantId, code: '1111', type: 'BANK' }
+      });
+      if (!parentBankAccount) {
+        const cashAndEquivalents = await prisma.account.findFirst({
+          where: { tenantId, code: '1110' }
+        });
+        parentBankAccount = await prisma.account.create({
           data: {
-            ...validatedData,
-            tenantId
-          }
-        });
-
-        // Get the default book for this tenant
-        const book = await tx.book.findFirst({
-          where: { tenantId },
-          orderBy: { createdAt: 'asc' }
-        });
-
-        if (!book) {
-          throw new Error('No accounting book found for tenant');
-        }
-
-        // Generate a unique account code for the bank account
-        // Find the next available code in the 1100-1199 range (Bank accounts)
-        const existingBankAccounts = await tx.account.findMany({
-          where: {
+            code: '1111',
+            name: 'Bank Accounts',
+            type: 'BANK',
             tenantId,
-            OR: [
-              { type: 'BANK' },
-              { type: 'CREDIT_CARD' }
-            ]
-          },
-          select: { code: true },
-          orderBy: { code: 'asc' }
-        });
-
-        // Find the next available code starting from 1100
-        let accountCode = '1100';
-        const existingCodes = existingBankAccounts.map(acc => acc.code);
-        
-        for (let i = 1100; i < 1200; i++) {
-          const codeStr = i.toString();
-          if (!existingCodes.includes(codeStr)) {
-            accountCode = codeStr;
-            break;
+            bookId: defaultBook.id,
+            parentId: cashAndEquivalents?.id ?? null,
+            currency: 'MMK',
+            isActive: true,
+            description: 'All bank account balances'
           }
+        });
+        console.log('🆕 Created parent Bank Accounts (1111)');
+      }
+
+      // Step 3: Generate a collision-proof next code in the 111x range
+      const existingCodes = await prisma.account.findMany({
+        where: { tenantId, code: { startsWith: '111' } },
+        select: { code: true }
+      });
+      const used = new Set(existingCodes.map(c => c.code));
+      let nextNumeric = 1112; // 1111 is parent
+      while (used.has(String(nextNumeric))) {
+        nextNumeric += 1;
+      }
+      const nextCode = String(nextNumeric);
+      console.log('🔢 Generated account code:', nextCode);
+
+      // Step 4: Create the chart of accounts entry (outside of transaction to avoid timeouts)
+      const chartAccount = await prisma.account.create({
+        data: {
+          code: nextCode,
+          name,
+          type: 'BANK',
+          parentId: parentBankAccount.id,
+          description: description || `${type === 'credit_card' ? 'Credit Card' : 'Bank Account'}: ${name}`,
+          currency: 'MMK',
+          isActive: true,
+          tenantId,
+          bookId: defaultBook.id
         }
+      });
+      createdChartAccountId = chartAccount.id;
+      console.log('✅ Chart of accounts entry created:', chartAccount.id);
 
-        // Determine account type based on payment method type
-        const accountType = validatedData.type === 'credit_card' ? 'CREDIT_CARD' : 'BANK';
-
-        // Create corresponding Chart of Accounts entry
-        const chartAccount = await tx.account.create({
-          data: {
-            code: accountCode,
-            name: validatedData.name,
-            type: accountType,
-            description: `${validatedData.type === 'credit_card' ? 'Credit Card' : 'Bank Account'}: ${validatedData.bankName || validatedData.name}`,
-            currency: validatedData.currency || 'MMK',
-            bookId: book.id,
-            tenantId,
-            balance: 0,
-            isActive: validatedData.isActive
-          }
-        });
-
-        return { paymentMethod, chartAccount };
+      // Step 5: Create the payment method linked to chart account
+      const paymentMethod = await prisma.paymentMethod.create({
+        data: {
+          name,
+          type,
+          tenantId,
+          currency: 'MMK',
+          isActive: true,
+          isDefault: false,
+          accountNumber: accountNumber || null,
+          bankName: bankName || null,
+          description: description || null,
+          chartAccountId: chartAccount.id
+        }
       });
 
-      res.status(201).json({
-        message: 'Payment method and chart account created successfully',
-        paymentMethod: result.paymentMethod,
-        chartAccount: result.chartAccount
+      console.log('🎉 Bank account creation completed successfully!');
+      return res.status(201).json({
+        message: 'Bank account created successfully with chart of accounts integration',
+        paymentMethod,
+        chartAccount
       });
     } catch (error) {
-      console.error('Create payment method error:', error);
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ 
-          error: 'Validation error', 
-          details: error.errors,
-          fields: error.errors.reduce((acc, err) => {
-            acc[err.path[0]] = err.message;
-            return acc;
-          }, {} as Record<string, string>)
-        });
-        return;
+      console.error('❌ CREATE ERROR:', error);
+      // Cleanup orphan chart account if payment method failed after account creation
+      if (createdChartAccountId) {
+        try {
+          await prisma.account.delete({ where: { id: createdChartAccountId } });
+          console.log('🧹 Cleaned up orphan chart account:', createdChartAccountId);
+        } catch (cleanupErr) {
+          console.error('⚠️ Failed to cleanup orphan chart account:', cleanupErr);
+        }
       }
-      res.status(500).json({ error: 'Failed to create payment method' });
+      return res.status(500).json({
+        error: 'Failed to create bank account',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   }
 
@@ -614,6 +643,61 @@ export class BankingController {
       res.json(insights);
     } catch (error) {
       console.error('Get transaction insights error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Recalculate all account balances based on journal entries
+  static async recalculateAccountBalances(req: Request, res: Response) {
+    try {
+      const tenantId = req.tenant?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant ID is required' });
+      }
+
+      console.log('🔄 Recalculating account balances for tenant:', tenantId);
+
+      // Get all accounts for the tenant
+      const accounts = await prisma.account.findMany({
+        where: { tenantId },
+        select: { id: true, code: true, name: true, type: true }
+      });
+
+      let updatedCount = 0;
+
+      for (const account of accounts) {
+        // Calculate balance from journal entries
+        const entries = await prisma.entry.findMany({
+          where: { accountId: account.id },
+          select: { type: true, amount: true }
+        });
+
+        let balance = 0;
+        for (const entry of entries) {
+          if (entry.type === 'DEBIT') {
+            balance += Number(entry.amount);
+          } else if (entry.type === 'CREDIT') {
+            balance -= Number(entry.amount);
+          }
+        }
+
+        // Update account balance
+        await prisma.account.update({
+          where: { id: account.id },
+          data: { balance }
+        });
+
+        updatedCount++;
+        console.log(`✅ Updated ${account.code} (${account.name}): ${balance}`);
+      }
+
+      console.log(`🎉 Recalculated balances for ${updatedCount} accounts`);
+      res.json({
+        message: `Successfully recalculated balances for ${updatedCount} accounts`,
+        updatedCount
+      });
+    } catch (error) {
+      console.error('Recalculate account balances error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

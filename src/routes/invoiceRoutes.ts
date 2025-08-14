@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import InvoiceController from '@/controllers/invoiceController';
+import InvoiceController from '../controllers/invoiceController';
 import JournalController from '../controllers/journalController';
 
 const router = Router();
@@ -158,14 +158,20 @@ router.post('/:id/share', async (req, res) => {
       return res.status(500).json({ error: 'Failed to save share token' });
     }
 
-    // Generate frontend URL instead of API URL
-    const frontendHost = req.get('host')?.includes('3000') ? req.get('host')?.replace('3000', '3001') : 'localhost:3001';
-    
+    // Generate FRONTEND URL (not API). Prefer env, then infer from host.
+    const forwardedHost = req.get('x-forwarded-host');
+    const host = forwardedHost || req.get('host') || 'localhost:3000';
+    // If running locally and host is 3001 (backend), switch to 3000 (frontend)
+    const inferredHost = host.includes('3001') ? host.replace('3001', '3000') : host;
+    const frontendOrigin = process.env.PUBLIC_APP_URL
+      || process.env.FRONTEND_PUBLIC_URL
+      || `${req.protocol}://${inferredHost}`;
+
     res.json({
       message: 'Share link generated',
       token,
       expiresAt,
-      publicUrl: `${req.protocol}://${frontendHost}/invoices/public/${token}`
+      publicUrl: `${frontendOrigin}/invoices/public/${token}`
     });
   } catch (error) {
     console.error('Create share link error:', error);

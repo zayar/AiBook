@@ -134,10 +134,11 @@ export interface VendorStats {
 
 // Helper function to get authentication headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
+  const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+  const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
   return {
     'Content-Type': 'application/json',
-    'X-Tenant-ID': 'default',
+    'x-tenant-id': tenantId,
     ...(token && { Authorization: `Bearer ${token}` })
   };
 };

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { TransactionController, processSmartTransaction } from '@/controllers/transactionController';
+import { TransactionController, processSmartTransaction } from '../controllers/transactionController';
 
 const router = Router();
 

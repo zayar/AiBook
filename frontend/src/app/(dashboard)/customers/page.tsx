@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Customer, CustomerAPI } from '@/lib/customer-api';
-import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
+import CustomersLoading from '@/components/CustomersLoading';
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -88,7 +88,7 @@ export default function CustomersPage() {
   };
 
   if (loading) {
-    return <UltraEnhancedLoading />;
+    return <CustomersLoading />;
   }
 
   return (

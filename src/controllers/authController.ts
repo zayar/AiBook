@@ -5,8 +5,8 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
 const prisma = new PrismaClient();
-import { UserRole } from '@/types';
-import { AppError } from '@/middleware/errorHandler';
+import { UserRole } from '../types';
+import { AppError } from '../middleware/errorHandler';
 
 
 export class AuthController {

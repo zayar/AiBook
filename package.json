@@ -4,16 +4,20 @@
   "description": "AI-First Bookkeeping SaaS with ALE Integration",
   "main": "dist/index.js",
   "_moduleAliases": {
-    "@": "dist",
-    "@/types": "dist/types",
-    "@/services": "dist/services",
-    "@/models": "dist/models",
-    "@/controllers": "dist/controllers",
-    "@/middleware": "dist/middleware",
-    "@/utils": "dist/utils"
+    "@": "src",
+    "@/types": "src/types",
+    "@/services": "src/services",
+    "@/models": "src/models",
+    "@/controllers": "src/controllers",
+    "@/middleware": "src/middleware",
+    "@/utils": "src/utils"
   },
   "scripts": {
     "dev": "ts-node -r tsconfig-paths/register src/index.ts",
+    "dev:setup": "./scripts/development/setup-environment.sh",
+    "dev:backend": "./scripts/development/start-backend.sh",
+    "dev:frontend": "cd frontend && PORT=3001 npm run dev",
+    "dev:all": "./scripts/development/start-all.sh",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
@@ -70,6 +74,8 @@
     "@google-cloud/storage": "^7.16.0",
     "@google-cloud/vertexai": "^1.10.0",
     "@modelcontextprotocol/sdk": "^1.17.0",
+    "@types/kafkajs": "^1.8.2",
+    "@types/redis": "^4.0.10",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
@@ -80,12 +86,15 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
     "module-alias": "^2.2.3",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "node-ledger": "^0.2.0",
     "openai": "^5.11.0",
-    "redis": "^5.6.1",
-    "zod": "^3.25.76"
+    "redis": "^5.8.0",
+    "zod": "^3.25.76",
+    "normalize:tenant": "node scripts/normalize-tenant-id.js",
+    "seed:baseline": "node scripts/seed-default-tenant-from-current.js"
   }
 }

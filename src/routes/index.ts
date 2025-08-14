@@ -33,6 +33,7 @@ import bankReconciliationRoutes from './bankReconciliationRoutes';
 import auditTrailRoutes from './auditTrailRoutes';
 import organizationProfileRoutes from './organizationProfileRoutes';
 import costLayerRoutes from './costLayerRoutes';
+import streamingRoutes from './streamingRoutes';
 
 const router = Router();
 
@@ -221,6 +222,9 @@ router.use('/ai/advanced', advancedAIRoutes);
 // Enhanced AI routes (Phase 1 implementation)
 router.use('/ai/enhanced', enhancedAIRoutes);
 router.use('/ai/conversation', conversationalAIRoutes);
+
+// 🔄 Streaming Infrastructure Routes
+router.use('/streaming', streamingRoutes);
 
 // Business operation routes
 router.use('/customers', customerRoutes);

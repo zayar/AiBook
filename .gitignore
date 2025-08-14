@@ -1,10 +1,32 @@
-# Dependencies
+# ===========================================
+# 🚀 Cashflow Copilot - GitIgnore Configuration
+# ===========================================
+
+# Build artifacts and compiled files
+dist/
+build/
+*.js.map
+*.d.ts.map
+
+# Dependency directories
 node_modules/
+frontend/node_modules/
+
+# Cache directories
+.next/
+.nuxt/
+.cache/
+
+# Log files
+*.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
 
-# Runtime files
+# Runtime data
+pids/
 *.pid
 *.seed
 *.pid.lock
@@ -14,21 +36,24 @@ coverage/
 *.lcov
 
 # nyc test coverage
-.nyc_output
+.nyc_output/
 
-# Build outputs
-dist/
-build/
-*.tsbuildinfo
-
-# Environment variables
+# Environment variables and configuration
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# IDE files
+# Credentials and sensitive files
+credentials/
+*.key
+*.pem
+*.crt
+*service-account*.json
+.credentials/
+
+# IDE and editor files
 .vscode/
 .idea/
 *.swp
@@ -44,29 +69,65 @@ build/
 ehthumbs.db
 Thumbs.db
 
-# Logs
-logs/
-*.log
-
 # Temporary files
-tmp/
+*.tmp
+*.temp
 temp/
+tmp/
+test_*.json
 
-# Database
+# Database files
 *.db
 *.sqlite
 *.sqlite3
 
-# Google Cloud credentials
-service-account.json
-service-account-key.json
-gcp-key.json
+# Redis dump files
+dump.rdb
 
-# Prisma
-/prisma/migrations/
+# Docker files (optional - remove if needed)
+# Dockerfile
+# docker-compose*.yml
 
-# Jest
-/coverage
+# Test files in root (keep organized tests in tests/ folder)
+test-*.js
+*test*.js
+
+# Backup files
+*.bak
+*.backup
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# TypeScript cache
+*.tsbuildinfo
 
 # Optional npm cache directory
 .npm
@@ -74,14 +135,25 @@ gcp-key.json
 # Optional eslint cache
 .eslintcache
 
-# Next.js
-frontend/.next/
-frontend/out/
-frontend/.env*.local
+# Optional REPL history
+.node_repl_history
 
-# Frontend build files
-frontend/build/
-frontend/dist/
-credentials/
-*.json
-.env.google-cloud
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Ignore simple test files that shouldn't be in the repo
+simple-*.js
+simple-*.sql

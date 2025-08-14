@@ -57,4 +57,16 @@ router.post('/retrain', AICopilotController.retrainModels);
  */
 router.get('/metrics', AICopilotController.getPerformanceMetrics);
 
+/**
+ * 📊 ENHANCED FINANCIAL METRICS
+ * Get cached financial metrics with Redis acceleration
+ */
+router.get('/metrics/enhanced', AICopilotController.getEnhancedFinancialMetrics);
+
+/**
+ * 🔄 CACHE MANAGEMENT
+ * Invalidate financial data cache
+ */
+router.post('/cache/invalidate', AICopilotController.invalidateFinancialCache);
+
 export default router;

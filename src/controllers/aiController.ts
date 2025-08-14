@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import aiService from '@/services/aiService';
-import mcpService from '@/services/mcpService';
-import { AppError } from '@/middleware/errorHandler';
+import aiService from '../services/aiService';
+import mcpService from '../services/mcpService';
+import { AppError } from '../middleware/errorHandler';
 
 // Configure multer for file uploads
 const upload = multer({

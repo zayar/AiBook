@@ -1,5 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { getTenantContext } from '@/middleware/enhancedTenantMiddleware';
+import { getTenantContext } from '../middleware/enhancedTenantMiddleware';
 
 // Models that should have tenant filtering
 const TENANT_MODELS = [

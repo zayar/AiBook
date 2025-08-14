@@ -65,7 +65,8 @@ export default function PublicInvoicePage() {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`http://localhost:3000/api/v1/invoices/public/${token}`, {
+      // Use relative path so it works in any env behind Next proxy
+      const response = await fetch(`/api/v1/invoices/public/${token}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-import { UserRole } from '@/types';
+import { UserRole } from '../types';
 
 interface FirebaseConfig {
   projectId: string;

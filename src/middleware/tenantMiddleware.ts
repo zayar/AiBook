@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { TenantContext } from '@/types';
+import { TenantContext } from '../types';
 import { AppError } from './errorHandler';
 
 // Extend Express Request type to include tenant context and user
@@ -44,8 +44,8 @@ export const tenantMiddleware = async (
       tenantId = req.user.tenantId;
     }
 
-    // 4. Use default tenant for development
-    if (!tenantId && process.env.NODE_ENV === 'development') {
+    // 4. Use default tenant for development (auto-detect)
+    if (!tenantId && (!process.env.NODE_ENV || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev')) {
       tenantId = process.env.DEFAULT_TENANT_ID || 'default';
     }
 

@@ -8,14 +8,14 @@ datasource db {
 }
 
 model SystemAdmin {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   name         String?
-  isActive     Boolean  @default(true)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("system_admins")
 }
@@ -24,39 +24,43 @@ model Tenant {
   id                    String                 @id @default(cuid())
   name                  String
   domain                String?                @unique
-  industry              String?                // Industry type (e.g., "Mobile App", "Retail", "Manufacturing")
-  location              String?                // Organization location (e.g., "Myanmar", "United States")
-  logo                  String?                // Logo URL or base64 data
-  fiscalYearStart       Int                    @default(1) // Month when fiscal year starts (1-12)
-  fiscalYearEnd         Int                    @default(12) // Month when fiscal year ends (1-12)
-  fiscalYearStartDay    Int                    @default(1) // Day when fiscal year starts (1-31)
-  reportBasis           ReportBasis            @default(ACCRUAL) // ACCRUAL or CASH
+  industry              String?
+  location              String?
+  logo                  String?
+  fiscalYearStart       Int                    @default(1)
+  fiscalYearEnd         Int                    @default(12)
+  fiscalYearStartDay    Int                    @default(1)
+  reportBasis           ReportBasis            @default(ACCRUAL)
   language              String                 @default("English")
   timezone              String                 @default("Asia/Rangoon")
   dateFormat            String                 @default("dd MMM yyyy")
-  companyId             String?                // Company registration ID
+  companyId             String?
   settings              Json?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   baseCurrency          Currency               @default(MMK)
   accounts              Account[]
   aiInsights            AIInsight[]
+  aiModelPerformances   AIModelPerformance[]
   aiModels              AIModel[]
+  auditLogs             AuditLog[]
   bankAccounts          BankAccount[]
   bankReconciliations   BankReconciliation[]
+  bankStatements        BankStatement[]
   bankTransactions      BankTransaction[]
   bills                 Bill[]
   books                 Book[]
+  businessContexts      BusinessContext[]
+  businessInsights      BusinessInsight[]
   businessPatterns      BusinessPattern[]
   cogsCalculations      COGSCalculation[]
   cogsLayerConsumptions COGSLayerConsumption[]
   conversationHistory   ConversationHistory[]
   conversationSessions  ConversationSession[]
-  userPreferences       UserPreference[]
-  reportTemplates       ReportTemplate[]
   customers             Customer[]
   entries               Entry[]
   expenses              Expense[]
+  financialKPIs         FinancialKPI[]
   inventoryAdjustments  InventoryAdjustment[]
   inventoryCostLayers   InventoryCostLayer[]
   inventoryItems        InventoryItem[]
@@ -66,19 +70,15 @@ model Tenant {
   predictionCache       PredictionCache[]
   purchases             Purchase[]
   reconciliations       Reconciliation[]
+  reportTemplates       ReportTemplate[]
   salesOrders           SalesOrder[]
   salespeople           Salesperson[]
   taxCalculations       TaxCalculation[]
   taxRates              TaxRate[]
+  transactionMatches    TransactionMatch[]
+  userPreferences       UserPreference[]
   vendorPayments        VendorPayment[]
   vendors               Vendor[]
-  auditLogs             AuditLog[]
-  bankStatements        BankStatement[]
-  transactionMatches    TransactionMatch[]
-  businessContexts      BusinessContext[]
-  aiModelPerformances   AIModelPerformance[]
-  businessInsights      BusinessInsight[]
-  financialKPIs         FinancialKPI[]
 
   @@map("tenants")
 }
@@ -95,37 +95,40 @@ model Book {
   entries   Entry[]
 
   @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
   @@map("books")
 }
 
 model Account {
-  id               String            @id @default(cuid())
-  code             String
-  name             String
-  type             AccountType
-  currency         String            @default("USD")
-  balance          Decimal           @default(0.00000000) @db.Decimal(20, 8)
-  parentId         String?
-  bookId           String
-  tenantId         String
-  isActive         Boolean           @default(true)
-  description      String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  book             Book              @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  parent           Account?          @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children         Account[]         @relation("AccountHierarchy")
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bankAccounts     BankAccount[]
-  bankTransactions BankTransaction[] @relation("BankTransactionContraAccount")
-  entries          Entry[]
-  expenseAccounts  Expense[]         @relation("ExpenseAccount")
-  inventoryAssets  InventoryItem[]   @relation("InventoryAsset")
-  inventoryCOGS    InventoryItem[]   @relation("InventoryCOGS")
-  taxRates         TaxRate[]
-  paymentsReceivedDeposits PaymentReceived[] @relation("PaymentReceivedDepositAccount")
-  vendorPaymentsPaidThrough VendorPayment[] @relation("VendorPaymentPaidThroughAccount")
-  expensesPaidThrough Expense[] @relation("ExpensePaidThroughAccount")
+  id                        String            @id @default(cuid())
+  code                      String
+  name                      String
+  type                      AccountType
+  currency                  String            @default("USD")
+  balance                   Decimal           @default(0.00000000) @db.Decimal(20, 8)
+  parentId                  String?
+  bookId                    String
+  tenantId                  String
+  isActive                  Boolean           @default(true)
+  description               String?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  book                      Book              @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  parent                    Account?          @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children                  Account[]         @relation("AccountHierarchy")
+  tenant                    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccounts              BankAccount[]
+  bankTransactions          BankTransaction[] @relation("BankTransactionContraAccount")
+  entries                   Entry[]
+  expenseAccounts           Expense[]         @relation("ExpenseAccount")
+  expensesPaidThrough       Expense[]         @relation("ExpensePaidThroughAccount")
+  inventoryAssets           InventoryItem[]   @relation("InventoryAsset")
+  inventoryCOGS             InventoryItem[]   @relation("InventoryCOGS")
+  paymentsReceivedDeposits  PaymentReceived[] @relation("PaymentReceivedDepositAccount")
+  taxRates                  TaxRate[]
+  vendorPaymentsPaidThrough VendorPayment[]   @relation("VendorPaymentPaidThroughAccount")
+  paymentMethods            PaymentMethod[]   @relation("PaymentMethodChartAccount")
 
   @@unique([tenantId, code])
   @@unique([tenantId, bookId, code])
@@ -153,31 +156,27 @@ model Entry {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   paymentReceivedId    String?
-  
-  // Enhanced AI Fields
-  aiInsights           Json?                 // Structured insights object
-  aiTags               Json?                 // Dynamic tagging system
-  confidence           Float?                // AI confidence score
-  embedding            Bytes?                // Vector embedding for similarity search
-  
-  // New AI-Enhanced Fields
-  businessContextId    String?               // Rich business metadata
-  predictiveFactors    Json?                 // Factors affecting predictions
-  semanticCategories   Json?                 // Multi-level categorization
-  relationshipGraph    Json?                 // Connected entity relationships
-  impactScore          Float?                // Business impact ranking
-  riskScore            Float?                // Risk assessment score
-  seasonalityFactors   Json?                 // Seasonal pattern data
-  userBehaviorContext  Json?                 // User interaction patterns
+  aiInsights           Json?
+  aiTags               Json?
+  confidence           Float?
+  embedding            Bytes?
+  businessContextId    String?
+  predictiveFactors    Json?
+  semanticCategories   Json?
+  relationshipGraph    Json?
+  impactScore          Float?
+  riskScore            Float?
+  seasonalityFactors   Json?
+  userBehaviorContext  Json?
   automationLevel      AutomationLevel       @default(MANUAL)
-  learningFeedback     Json?                 // User feedback for ML improvement
+  learningFeedback     Json?
   bankTransactions     BankTransaction[]
   account              Account               @relation(fields: [accountId], references: [id])
   book                 Book                  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  businessContext      BusinessContext?      @relation(fields: [businessContextId], references: [id])
   paymentReceived      PaymentReceived?      @relation("PaymentReceivedJournalEntries", fields: [paymentReceivedId], references: [id])
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   inventoryAdjustments InventoryAdjustment[]
-  businessContext      BusinessContext?      @relation(fields: [businessContextId], references: [id])
 
   @@index([tenantId, journalId])
   @@index([tenantId, accountId])
@@ -193,17 +192,17 @@ model Entry {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  firebaseUid String   @unique
-  name        String?
-  role        UserRole @default(USER)
-  tenantId    String?
-  isActive    Boolean  @default(true)
-  passwordHash String?
-  passwordMustChange Boolean @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  firebaseUid        String   @unique
+  name               String?
+  role               UserRole @default(USER)
+  tenantId           String?
+  isActive           Boolean  @default(true)
+  passwordHash       String?
+  passwordMustChange Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@index([tenantId])
   @@map("users")
@@ -374,7 +373,6 @@ model Invoice {
   recurringInterval String?
   salesOrderId      String?
   metadata          Json?
-  // Public viewing and customization
   shareToken        String?          @unique
   shareExpiresAt    DateTime?
   designSettings    Json?
@@ -459,21 +457,24 @@ model PaymentMethod {
   isDefault           Boolean              @default(false)
   isActive            Boolean              @default(true)
   tenantId            String
+  chartAccountId      String?             // Link to chart of accounts
   metadata            Json?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   bankReconciliations BankReconciliation[]
-  bankTransactions    BankTransaction[]
   bankStatements      BankStatement[]
+  bankTransactions    BankTransaction[]
   expenses            Expense[]            @relation("PaidThroughPaymentMethod")
   payments            InvoicePayment[]
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vendorPayments      VendorPayment[]      @relation("VendorPaymentPaidThrough")
+  chartAccount        Account?             @relation("PaymentMethodChartAccount", fields: [chartAccountId], references: [id])
 
   @@unique([tenantId, accountNumber])
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@index([tenantId, type])
+  @@index([chartAccountId])
   @@map("payment_methods")
 }
 
@@ -655,47 +656,47 @@ model BillPayment {
 }
 
 model Expense {
-  id               String        @id @default(cuid())
-  description      String
-  amount           Decimal       @db.Decimal(15, 2)
-  expenseDate      DateTime      @default(now())
-  category         String
-  subcategory      String?
-  receiptUrl       String?
-  billable         Boolean       @default(false)
-  customerId       String?
-  projectId        String?
-  status           ExpenseStatus @default(PENDING)
-  approvedBy       String?
-  approvedAt       DateTime?
-  tenantId         String
-  userId           String
-  metadata         Json?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  branch           String?
-  currency         String        @default("MMK")
-  exchangeRate     Decimal       @default(1.0000) @db.Decimal(10, 4)
-  expenseAccountId String
-  expenseNumber    String        @unique
-  journalId        String?
-  notes            String?
-  paidAt           DateTime?
-  paidThroughId    String?       // Keep for backward compatibility
-  paidThroughAccountId String?   // NEW: Link to Chart of Accounts
-  receiptFiles     Json?
-  reference        String?
-  taxAmount        Decimal       @default(0.00) @db.Decimal(15, 2)
-  taxRateId        String?
-  totalAmount      Decimal       @db.Decimal(15, 2)
-  vendorId         String?
-  customer         Customer?     @relation(fields: [customerId], references: [id])
-  expenseAccount   Account       @relation("ExpenseAccount", fields: [expenseAccountId], references: [id])
-  paidThrough      PaymentMethod? @relation("PaidThroughPaymentMethod", fields: [paidThroughId], references: [id])
-  paidThroughAccount Account?    @relation("ExpensePaidThroughAccount", fields: [paidThroughAccountId], references: [id])
-  taxRate          TaxRate?      @relation(fields: [taxRateId], references: [id])
-  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor           Vendor?       @relation(fields: [vendorId], references: [id])
+  id                   String         @id @default(cuid())
+  description          String
+  amount               Decimal        @db.Decimal(15, 2)
+  expenseDate          DateTime       @default(now())
+  category             String
+  subcategory          String?
+  receiptUrl           String?
+  billable             Boolean        @default(false)
+  customerId           String?
+  projectId            String?
+  status               ExpenseStatus  @default(PENDING)
+  approvedBy           String?
+  approvedAt           DateTime?
+  tenantId             String
+  userId               String
+  metadata             Json?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  branch               String?
+  currency             String         @default("MMK")
+  exchangeRate         Decimal        @default(1.0000) @db.Decimal(10, 4)
+  expenseAccountId     String
+  expenseNumber        String         @unique
+  journalId            String?
+  notes                String?
+  paidAt               DateTime?
+  paidThroughId        String?
+  paidThroughAccountId String?
+  receiptFiles         Json?
+  reference            String?
+  taxAmount            Decimal        @default(0.00) @db.Decimal(15, 2)
+  taxRateId            String?
+  totalAmount          Decimal        @db.Decimal(15, 2)
+  vendorId             String?
+  customer             Customer?      @relation(fields: [customerId], references: [id])
+  expenseAccount       Account        @relation("ExpenseAccount", fields: [expenseAccountId], references: [id])
+  paidThroughAccount   Account?       @relation("ExpensePaidThroughAccount", fields: [paidThroughAccountId], references: [id])
+  paidThrough          PaymentMethod? @relation("PaidThroughPaymentMethod", fields: [paidThroughId], references: [id])
+  taxRate              TaxRate?       @relation(fields: [taxRateId], references: [id])
+  tenant               Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor               Vendor?        @relation(fields: [vendorId], references: [id])
 
   @@index([tenantId, status])
   @@index([tenantId, expenseDate])
@@ -736,40 +737,40 @@ model BankAccount {
 }
 
 model BankTransaction {
-  id                String          @id @default(cuid())
-  bankAccountId     String?
-  description       String
-  amount            Decimal         @db.Decimal(15, 2)
-  transactionDate   DateTime
-  type              TransactionType
-  reference         String?
-  balance           Decimal?        @db.Decimal(15, 2)
-  category          String?
-  matched           Boolean         @default(false)
-  entryId           String?
-  tenantId          String
-  metadata          Json?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  paymentMethodId   String?
-  reconciled        Boolean         @default(false)
-  reconciledAt      DateTime?
-  status            String          @default("pending")
-  bankFee           Decimal?        @db.Decimal(15, 2)
-  contraAccountId   String?
-  creditAmount      Decimal?        @db.Decimal(15, 2)
-  debitAmount       Decimal?        @db.Decimal(15, 2)
-  exchangeRate      Decimal?        @db.Decimal(10, 6)
-  runningBalance    Decimal         @db.Decimal(15, 2)
-  statementDate     DateTime?
-  transactionNumber String?
-  bankAccount       BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  contraAccount     Account?        @relation("BankTransactionContraAccount", fields: [contraAccountId], references: [id])
-  entry             Entry?          @relation(fields: [entryId], references: [id])
-  paymentMethod     PaymentMethod?  @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
-  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                    String                     @id @default(cuid())
+  bankAccountId         String?
+  description           String
+  amount                Decimal                    @db.Decimal(15, 2)
+  transactionDate       DateTime
+  type                  TransactionType
+  reference             String?
+  balance               Decimal?                   @db.Decimal(15, 2)
+  category              String?
+  matched               Boolean                    @default(false)
+  entryId               String?
+  tenantId              String
+  metadata              Json?
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  paymentMethodId       String?
+  reconciled            Boolean                    @default(false)
+  reconciledAt          DateTime?
+  status                String                     @default("pending")
+  bankFee               Decimal?                   @db.Decimal(15, 2)
+  contraAccountId       String?
+  creditAmount          Decimal?                   @db.Decimal(15, 2)
+  debitAmount           Decimal?                   @db.Decimal(15, 2)
+  exchangeRate          Decimal?                   @db.Decimal(10, 6)
+  runningBalance        Decimal                    @db.Decimal(15, 2)
+  statementDate         DateTime?
+  transactionNumber     String?
   statementTransactions BankStatementTransaction[]
-  transactionMatches   TransactionMatch[]
+  bankAccount           BankAccount?               @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  contraAccount         Account?                   @relation("BankTransactionContraAccount", fields: [contraAccountId], references: [id])
+  entry                 Entry?                     @relation(fields: [entryId], references: [id])
+  paymentMethod         PaymentMethod?             @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
+  tenant                Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactionMatches    TransactionMatch[]
 
   @@index([tenantId, bankAccountId])
   @@index([tenantId, paymentMethodId])
@@ -812,25 +813,25 @@ model Reconciliation {
 }
 
 model BankReconciliation {
-  id                     String               @id @default(cuid())
-  paymentMethodId        String
-  statementId            String?
-  reconciliationDate     DateTime
-  statementBalance       Decimal              @db.Decimal(15, 2)
-  bookBalance            Decimal?             @db.Decimal(15, 2)
-  adjustedBookBalance    Decimal?             @db.Decimal(15, 2)
-  variance               Decimal?             @db.Decimal(15, 2)
-  isBalanced             Boolean              @default(false)
-  status                 ReconciliationStatus @default(IN_PROGRESS)
-  reconciledBy           String?
-  notes                  String?
-  tenantId               String
-  metadata               Json?
-  createdAt              DateTime             @default(now())
-  updatedAt              DateTime             @updatedAt
-  paymentMethod          PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
-  statement              BankStatement?       @relation(fields: [statementId], references: [id])
-  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(cuid())
+  paymentMethodId     String
+  statementId         String?
+  reconciliationDate  DateTime
+  statementBalance    Decimal              @db.Decimal(15, 2)
+  bookBalance         Decimal?             @db.Decimal(15, 2)
+  adjustedBookBalance Decimal?             @db.Decimal(15, 2)
+  variance            Decimal?             @db.Decimal(15, 2)
+  isBalanced          Boolean              @default(false)
+  status              ReconciliationStatus @default(IN_PROGRESS)
+  reconciledBy        String?
+  notes               String?
+  tenantId            String
+  metadata            Json?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  paymentMethod       PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
+  statement           BankStatement?       @relation(fields: [statementId], references: [id])
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, paymentMethodId])
   @@index([tenantId, status])
@@ -841,20 +842,20 @@ model BankReconciliation {
 }
 
 model BankStatement {
-  id                String                    @id @default(cuid())
-  paymentMethodId   String
-  statementDate     DateTime
-  openingBalance    Decimal                   @db.Decimal(15, 2)
-  closingBalance    Decimal                   @db.Decimal(15, 2)
-  status            String                    @default("IMPORTED")
-  tenantId          String
-  metadata          Json?
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
-  paymentMethod     PaymentMethod             @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
-  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  transactions      BankStatementTransaction[]
-  reconciliations   BankReconciliation[]
+  id              String                     @id @default(cuid())
+  paymentMethodId String
+  statementDate   DateTime
+  openingBalance  Decimal                    @db.Decimal(15, 2)
+  closingBalance  Decimal                    @db.Decimal(15, 2)
+  status          String                     @default("IMPORTED")
+  tenantId        String
+  metadata        Json?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  reconciliations BankReconciliation[]
+  transactions    BankStatementTransaction[]
+  paymentMethod   PaymentMethod              @relation(fields: [paymentMethodId], references: [id], onDelete: Cascade)
+  tenant          Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, paymentMethodId])
   @@index([tenantId, statementDate])
@@ -863,21 +864,21 @@ model BankStatement {
 }
 
 model BankStatementTransaction {
-  id                    String    @id @default(cuid())
-  statementId           String
-  transactionDate       DateTime
-  description           String
-  reference             String?
-  amount                Decimal   @db.Decimal(15, 2)
-  type                  String    // DEPOSIT or WITHDRAWAL
-  isMatched             Boolean   @default(false)
-  matchedTransactionId  String?
-  tenantId              String
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  statement             BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  matchedTransaction    BankTransaction? @relation(fields: [matchedTransactionId], references: [id])
-  transactionMatches    TransactionMatch[]
+  id                   String             @id @default(cuid())
+  statementId          String
+  transactionDate      DateTime
+  description          String
+  reference            String?
+  amount               Decimal            @db.Decimal(15, 2)
+  type                 String
+  isMatched            Boolean            @default(false)
+  matchedTransactionId String?
+  tenantId             String
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  matchedTransaction   BankTransaction?   @relation(fields: [matchedTransactionId], references: [id])
+  statement            BankStatement      @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  transactionMatches   TransactionMatch[]
 
   @@index([tenantId, statementId])
   @@index([tenantId, isMatched])
@@ -887,14 +888,14 @@ model BankStatementTransaction {
 }
 
 model TransactionMatch {
-  id                      String    @id @default(cuid())
-  statementTransactionId  String
-  bookTransactionId       String
-  matchedAt               DateTime  @default(now())
-  tenantId                String
-  statementTransaction    BankStatementTransaction @relation(fields: [statementTransactionId], references: [id], onDelete: Cascade)
-  bookTransaction         BankTransaction @relation(fields: [bookTransactionId], references: [id], onDelete: Cascade)
-  tenant                  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                     String                   @id @default(cuid())
+  statementTransactionId String
+  bookTransactionId      String
+  matchedAt              DateTime                 @default(now())
+  tenantId               String
+  bookTransaction        BankTransaction          @relation(fields: [bookTransactionId], references: [id], onDelete: Cascade)
+  statementTransaction   BankStatementTransaction @relation(fields: [statementTransactionId], references: [id], onDelete: Cascade)
+  tenant                 Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([statementTransactionId, bookTransactionId])
   @@index([tenantId])
@@ -991,7 +992,7 @@ model InventoryCostLayer {
 
 model COGSCalculation {
   id                 String                 @id @default(cuid())
-  invoiceItemId      String                 @unique
+  invoiceItemId      String?                @unique
   inventoryItemId    String
   quantitySold       Decimal                @db.Decimal(10, 3)
   totalCOGS          Decimal                @db.Decimal(15, 2)
@@ -1002,7 +1003,7 @@ model COGSCalculation {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
   inventoryItem      InventoryItem          @relation("InventoryCOGSCalculations", fields: [inventoryItemId], references: [id], onDelete: Cascade)
-  invoiceItem        InvoiceItem            @relation("InvoiceItemCOGS", fields: [invoiceItemId], references: [id], onDelete: Cascade)
+  invoiceItem        InvoiceItem?           @relation("InvoiceItemCOGS", fields: [invoiceItemId], references: [id], onDelete: Cascade)
   tenant             Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   layerConsumptions  COGSLayerConsumption[]
 
@@ -1078,42 +1079,42 @@ model TaxCalculation {
 }
 
 model PaymentReceived {
-  id                String                @id @default(cuid())
-  paymentNumber     String                @unique
-  customerId        String?
-  customerName      String?
-  tenantId          String
-  branchId          String?
-  amount            Decimal               @db.Decimal(15, 2)
-  currency          String                @default("MMK")
-  exchangeRate      Decimal               @default(1.000000) @db.Decimal(10, 6)
-  paymentDate       DateTime              @default(now())
-  paymentMode       PaymentReceivedMode   @default(CASH)
-  depositType       String?               @default("CASH_IN_HAND") // Keep for backward compatibility
-  depositToAccountId String?              // NEW: Link to Chart of Accounts
-  bankCharges       Decimal?              @db.Decimal(15, 2)
-  referenceNumber   String?
-  taxDeducted       Boolean               @default(false)
-  taxAmount         Decimal?              @db.Decimal(15, 2)
-  status            PaymentReceivedStatus @default(COMPLETED)
-  isReconciled      Boolean               @default(false)
-  reconciledAt      DateTime?
-  reconciledBy      String?
-  notes             String?               @db.Text
-  internalNotes     String?               @db.Text
-  attachments       Json?
-  sendThankYouEmail Boolean               @default(false)
-  emailSent         Boolean               @default(false)
-  emailSentAt       DateTime?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  createdBy         String?
-  updatedBy         String?
-  journalEntries    Entry[]               @relation("PaymentReceivedJournalEntries")
-  invoicePayments   InvoicePayment[]
-  customer          Customer?             @relation(fields: [customerId], references: [id])
-  depositToAccount  Account?              @relation("PaymentReceivedDepositAccount", fields: [depositToAccountId], references: [id])
-  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                 String                @id @default(cuid())
+  paymentNumber      String                @unique
+  customerId         String?
+  customerName       String?
+  tenantId           String
+  branchId           String?
+  amount             Decimal               @db.Decimal(15, 2)
+  currency           String                @default("MMK")
+  exchangeRate       Decimal               @default(1.000000) @db.Decimal(10, 6)
+  paymentDate        DateTime              @default(now())
+  paymentMode        PaymentReceivedMode   @default(CASH)
+  depositType        String?               @default("CASH_IN_HAND")
+  depositToAccountId String?
+  bankCharges        Decimal?              @db.Decimal(15, 2)
+  referenceNumber    String?
+  taxDeducted        Boolean               @default(false)
+  taxAmount          Decimal?              @db.Decimal(15, 2)
+  status             PaymentReceivedStatus @default(COMPLETED)
+  isReconciled       Boolean               @default(false)
+  reconciledAt       DateTime?
+  reconciledBy       String?
+  notes              String?               @db.Text
+  internalNotes      String?               @db.Text
+  attachments        Json?
+  sendThankYouEmail  Boolean               @default(false)
+  emailSent          Boolean               @default(false)
+  emailSentAt        DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  createdBy          String?
+  updatedBy          String?
+  journalEntries     Entry[]               @relation("PaymentReceivedJournalEntries")
+  invoicePayments    InvoicePayment[]
+  customer           Customer?             @relation(fields: [customerId], references: [id])
+  depositToAccount   Account?              @relation("PaymentReceivedDepositAccount", fields: [depositToAccountId], references: [id])
+  tenant             Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, paymentNumber])
   @@index([tenantId, status])
@@ -1126,36 +1127,36 @@ model PaymentReceived {
 }
 
 model VendorPayment {
-  id              String              @id @default(cuid())
-  paymentNumber   String              @unique
-  vendorId        String
-  tenantId        String
-  branchId        String?
-  amount          Decimal             @db.Decimal(15, 2)
-  bankCharges     Decimal             @default(0.00) @db.Decimal(15, 2)
-  taxAmount       Decimal             @default(0.00) @db.Decimal(15, 2)
-  currency        String              @default("MMK")
-  exchangeRate    Decimal             @default(1.000000) @db.Decimal(10, 6)
-  paymentDate     DateTime            @default(now())
-  paymentMode     PaymentReceivedMode @default(CASH)
-  paidThroughId   String?             // Keep for backward compatibility
-  paidThroughAccountId String?        // NEW: Link to Chart of Accounts
-  referenceNumber String?
-  taxDeducted     Boolean             @default(false)
-  notes           String?             @db.Text
-  internalNotes   String?             @db.Text
-  attachments     Json?
-  branch          String?             @default("Head Office")
-  journalId       String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  createdBy       String?
-  updatedBy       String?
-  billPayments    BillPayment[]       @relation("VendorPaymentBillPayments")
-  paidThrough     PaymentMethod?      @relation("VendorPaymentPaidThrough", fields: [paidThroughId], references: [id])
-  paidThroughAccount Account?         @relation("VendorPaymentPaidThroughAccount", fields: [paidThroughAccountId], references: [id])
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vendor          Vendor              @relation(fields: [vendorId], references: [id])
+  id                   String              @id @default(cuid())
+  paymentNumber        String              @unique
+  vendorId             String
+  tenantId             String
+  branchId             String?
+  amount               Decimal             @db.Decimal(15, 2)
+  bankCharges          Decimal             @default(0.00) @db.Decimal(15, 2)
+  taxAmount            Decimal             @default(0.00) @db.Decimal(15, 2)
+  currency             String              @default("MMK")
+  exchangeRate         Decimal             @default(1.000000) @db.Decimal(10, 6)
+  paymentDate          DateTime            @default(now())
+  paymentMode          PaymentReceivedMode @default(CASH)
+  paidThroughId        String?
+  paidThroughAccountId String?
+  referenceNumber      String?
+  taxDeducted          Boolean             @default(false)
+  notes                String?             @db.Text
+  internalNotes        String?             @db.Text
+  attachments          Json?
+  branch               String?             @default("Head Office")
+  journalId            String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  createdBy            String?
+  updatedBy            String?
+  billPayments         BillPayment[]       @relation("VendorPaymentBillPayments")
+  paidThroughAccount   Account?            @relation("VendorPaymentPaidThroughAccount", fields: [paidThroughAccountId], references: [id])
+  paidThrough          PaymentMethod?      @relation("VendorPaymentPaidThrough", fields: [paidThroughId], references: [id])
+  tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vendor               Vendor              @relation(fields: [vendorId], references: [id])
 
   @@unique([tenantId, paymentNumber])
   @@index([tenantId, vendorId])
@@ -1246,79 +1247,78 @@ model ConversationHistory {
   @@map("conversation_history")
 }
 
-// Enhanced Phase 3 Conversation Models
 model ConversationSession {
-  id             String                @id @default(cuid())
-  sessionId      String                @unique
-  userId         String?
-  tenantId       String
-  status         ConversationStatus    @default(ACTIVE)
-  context        Json?                 // Current conversation context
-  preferences    Json?                 // User preferences learned
-  startedAt      DateTime              @default(now())
-  lastActiveAt   DateTime              @updatedAt
-  endedAt        DateTime?
-  totalMessages  Int                   @default(0)
-  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  messages       ConversationMessage[]
-  
+  id            String                @id @default(cuid())
+  sessionId     String                @unique
+  userId        String?
+  tenantId      String
+  status        ConversationStatus    @default(ACTIVE)
+  context       Json?
+  preferences   Json?
+  startedAt     DateTime              @default(now())
+  lastActiveAt  DateTime              @updatedAt
+  endedAt       DateTime?
+  totalMessages Int                   @default(0)
+  messages      ConversationMessage[]
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, userId])
   @@index([tenantId, status])
   @@map("conversation_sessions")
 }
 
 model ConversationMessage {
-  id             String              @id @default(cuid())
-  sessionId      String
-  messageType    MessageType         @default(USER)
-  content        String              @db.Text
-  intent         String?
-  entities       Json?               // Extracted entities
-  confidence     Float?
-  executionTime  Int?
-  metadata       Json?               // Additional message metadata
-  createdAt      DateTime            @default(now())
-  session        ConversationSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
-  
+  id            String              @id @default(cuid())
+  sessionId     String
+  messageType   MessageType         @default(USER)
+  content       String              @db.Text
+  intent        String?
+  entities      Json?
+  confidence    Float?
+  executionTime Int?
+  metadata      Json?
+  createdAt     DateTime            @default(now())
+  session       ConversationSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+
   @@index([sessionId, createdAt])
   @@map("conversation_messages")
 }
 
 model UserPreference {
-  id                String           @id @default(cuid())
-  userId            String
-  tenantId          String
-  preferenceType    PreferenceType
-  key               String
-  value             Json
-  confidence        Float            @default(0.5)
-  learningSource    LearningSource   @default(CONVERSATION)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  id             String         @id @default(cuid())
+  userId         String
+  tenantId       String
+  preferenceType PreferenceType
+  key            String
+  value          Json
+  confidence     Float          @default(0.5)
+  learningSource LearningSource @default(CONVERSATION)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([userId, tenantId, preferenceType, key])
   @@index([tenantId, userId])
   @@map("user_preferences")
 }
 
 model ReportTemplate {
-  id              String       @id @default(cuid())
-  name            String
-  description     String?
-  tenantId        String
-  userId          String?
-  templateType    ReportType
-  nlQuery         String       // Natural language query that generates this report
-  sqlQuery        String?      // Generated SQL query
-  parameters      Json?        // Report parameters
-  isPublic        Boolean      @default(false)
-  usageCount      Int          @default(0)
+  id               String     @id @default(cuid())
+  name             String
+  description      String?
+  tenantId         String
+  userId           String?
+  templateType     ReportType
+  nlQuery          String
+  sqlQuery         String?
+  parameters       Json?
+  isPublic         Boolean    @default(false)
+  usageCount       Int        @default(0)
   avgExecutionTime Float?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([tenantId, templateType])
   @@index([tenantId, isPublic])
   @@map("report_templates")
@@ -1341,40 +1341,30 @@ model PredictionCache {
 }
 
 model BusinessContext {
-  id                   String                @id @default(cuid())
-  
-  // Business Dimensions
-  businessUnit         String?               // Department/division
-  project              String?               // Project association
-  campaign             String?               // Marketing campaign
-  channel              String?               // Sales/expense channel
-  territory            String?               // Geographic territory
-  
-  // Customer/Vendor Intelligence
-  entitySegment        String?               // Customer/vendor segment
-  entityTier           String?               // VIP/Standard/Budget tier
-  relationshipLength   Int?                  // Days since first transaction
-  lifetimeValue        Decimal?              @db.Decimal(15, 2) // Calculated LTV
-  paymentHistory       Json?                 // Payment behavior patterns
-  riskProfile          String?               // Low/Medium/High risk
-  
-  // Contextual Metadata
-  marketConditions     Json?                 // Economic indicators at time
-  competitorAnalysis   Json?                 // Competitive context
-  seasonalFactors      Json?                 // Seasonal business patterns
-  externalEvents       Json?                 // Events affecting transaction
-  
-  // AI Learning Data
-  userDecisionPatterns Json?                 // How users categorize similar items
-  correctionHistory    Json?                 // Historical corrections made
-  predictionAccuracy   Json?                 // AI prediction success rates
-  
+  id                   String   @id @default(cuid())
+  businessUnit         String?
+  project              String?
+  campaign             String?
+  channel              String?
+  territory            String?
+  entitySegment        String?
+  entityTier           String?
+  relationshipLength   Int?
+  lifetimeValue        Decimal? @db.Decimal(15, 2)
+  paymentHistory       Json?
+  riskProfile          String?
+  marketConditions     Json?
+  competitorAnalysis   Json?
+  seasonalFactors      Json?
+  externalEvents       Json?
+  userDecisionPatterns Json?
+  correctionHistory    Json?
+  predictionAccuracy   Json?
   tenantId             String
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   entries              Entry[]
-  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, entitySegment])
   @@index([tenantId, businessUnit])
@@ -1383,29 +1373,22 @@ model BusinessContext {
 }
 
 model AIModelPerformance {
-  id                   String                @id @default(cuid())
-  modelType            String                // categorization, prediction, etc.
-  tenantId             String
-  
-  // Performance Metrics
-  accuracy             Float
-  precision            Float
-  recall               Float
-  f1Score              Float
-  
-  // Business Metrics
-  timesSaved           Int                   // Minutes saved through automation
-  errorsDetected       Int                   // Anomalies caught
-  revenueImpact        Decimal?              @db.Decimal(15, 2) // Business value generated
-  
-  // Learning Progression
-  trainingDataPoints   Int
-  lastTrainingDate     DateTime
-  improvementRate      Float
-  
-  period               DateTime              // Performance period
-  createdAt            DateTime              @default(now())
-  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  modelType          String
+  tenantId           String
+  accuracy           Float
+  precision          Float
+  recall             Float
+  f1Score            Float
+  timesSaved         Int
+  errorsDetected     Int
+  revenueImpact      Decimal? @db.Decimal(15, 2)
+  trainingDataPoints Int
+  lastTrainingDate   DateTime
+  improvementRate    Float
+  period             DateTime
+  createdAt          DateTime @default(now())
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, modelType])
   @@index([tenantId, period])
@@ -1413,43 +1396,30 @@ model AIModelPerformance {
 }
 
 model BusinessInsight {
-  id                   String                @id @default(cuid())
-  tenantId             String
-  
-  // Insight Classification
-  type                 InsightType
-  category             String                // Revenue, Cost, Risk, Opportunity
-  priority             InsightPriority
-  confidence           Float
-  
-  // Insight Content
-  title                String
-  description          String
-  actionable           Boolean               @default(false)
-  recommendations      Json                  // Structured recommendations
-  
-  // Impact Analysis
-  potentialImpact      Decimal?              @db.Decimal(15, 2) // Estimated financial impact
-  timeframe           String?                // When impact expected
-  effort              String?                // Implementation effort
-  
-  // Data Sources
-  dataPoints           Json                  // Source data used
-  relatedEntities      Json                  // Connected accounts/transactions
-  
-  // User Interaction
-  viewed               Boolean               @default(false)
-  viewedAt             DateTime?
-  actionTaken          String?               // What action user took
-  userFeedback         Json?                 // User rating/comments
-  
-  // Lifecycle
-  isActive             Boolean               @default(true)
-  expiresAt            DateTime?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  
-  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id              String          @id @default(cuid())
+  tenantId        String
+  type            InsightType
+  category        String
+  priority        InsightPriority
+  confidence      Float
+  title           String
+  description     String
+  actionable      Boolean         @default(false)
+  recommendations Json
+  potentialImpact Decimal?        @db.Decimal(15, 2)
+  timeframe       String?
+  effort          String?
+  dataPoints      Json
+  relatedEntities Json
+  viewed          Boolean         @default(false)
+  viewedAt        DateTime?
+  actionTaken     String?
+  userFeedback    Json?
+  isActive        Boolean         @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, type])
   @@index([tenantId, priority])
@@ -1459,31 +1429,22 @@ model BusinessInsight {
 }
 
 model FinancialKPI {
-  id                   String                @id @default(cuid())
+  id                   String   @id @default(cuid())
   tenantId             String
-  
-  // KPI Definition
   name                 String
-  category             String                // Profitability, Liquidity, etc.
-  calculation          Json                  // How to calculate
-  
-  // Current Values
-  currentValue         Decimal               @db.Decimal(15, 2)
-  previousValue        Decimal?              @db.Decimal(15, 2)
-  targetValue          Decimal?              @db.Decimal(15, 2)
-  benchmarkValue       Decimal?              @db.Decimal(15, 2) // Industry benchmark
-  
-  // Trends
-  trend                String                // UP, DOWN, STABLE
+  category             String
+  calculation          Json
+  currentValue         Decimal  @db.Decimal(15, 2)
+  previousValue        Decimal? @db.Decimal(15, 2)
+  targetValue          Decimal? @db.Decimal(15, 2)
+  benchmarkValue       Decimal? @db.Decimal(15, 2)
+  trend                String
   changePercent        Float?
-  
-  // AI Predictions
-  predictedValue       Decimal?              @db.Decimal(15, 2) // AI-predicted next value
+  predictedValue       Decimal? @db.Decimal(15, 2)
   predictionConfidence Float?
-  
-  period               DateTime              // KPI calculation period
-  createdAt            DateTime              @default(now())
-  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  period               DateTime
+  createdAt            DateTime @default(now())
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, category])
   @@index([tenantId, period])
@@ -1492,24 +1453,24 @@ model FinancialKPI {
 }
 
 model AuditLog {
-  id          String    @id @default(cuid())
-  entityType  String
-  entityId    String
-  action      String
-  userId      String
-  userEmail   String?
-  oldValues   String?   // JSON string
-  newValues   String?   // JSON string
-  changes     String?   // JSON string
-  ipAddress   String?
-  userAgent   String?
-  sessionId   String?
-  reason      String?
-  tenantId    String
-  timestamp   DateTime  @default(now())
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  financialAuditTrail FinancialAuditTrail?
+  id                  String               @id @default(cuid())
+  entityType          String
+  entityId            String
+  action              String
+  userId              String
+  userEmail           String?
+  oldValues           String?
+  newValues           String?
+  changes             String?
+  ipAddress           String?
+  userAgent           String?
+  sessionId           String?
+  reason              String?
+  tenantId            String
+  timestamp           DateTime             @default(now())
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   criticalActionLog   CriticalActionLog?
+  financialAuditTrail FinancialAuditTrail?
 
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, action])
@@ -1520,15 +1481,15 @@ model AuditLog {
 }
 
 model FinancialAuditTrail {
-  id              String    @id @default(cuid())
-  auditLogId      String    @unique
-  transactionType String
-  transactionId   String
-  amount          Decimal?  @db.Decimal(15, 2)
-  currency        String    @default("MMK")
-  accountsAffected String?  // JSON string
-  tenantId        String
-  auditLog        AuditLog  @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  auditLogId       String   @unique
+  transactionType  String
+  transactionId    String
+  amount           Decimal? @db.Decimal(15, 2)
+  currency         String   @default("MMK")
+  accountsAffected String?
+  tenantId         String
+  auditLog         AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, transactionType])
   @@index([tenantId, transactionId])
@@ -1537,15 +1498,15 @@ model FinancialAuditTrail {
 }
 
 model CriticalActionLog {
-  id          String    @id @default(cuid())
-  auditLogId  String    @unique
-  action      String
-  entityType  String
-  entityId    String
-  userId      String
-  alertSent   Boolean   @default(false)
-  tenantId    String
-  auditLog    AuditLog  @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  auditLogId String   @unique
+  action     String
+  entityType String
+  entityId   String
+  userId     String
+  alertSent  Boolean  @default(false)
+  tenantId   String
+  auditLog   AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, action])
   @@index([tenantId, alertSent])
@@ -1554,7 +1515,6 @@ model CriticalActionLog {
 }
 
 enum AccountType {
-  // Asset sub-types
   OTHER_ASSET
   OTHER_CURRENT_ASSET
   CASH
@@ -1567,8 +1527,6 @@ enum AccountType {
   INTANGIBLE_ASSET
   NON_CURRENT_ASSET
   DEFERRED_TAX_ASSET
-  
-  // Liability sub-types
   OTHER_CURRENT_LIABILITY
   CREDIT_CARD
   NON_CURRENT_LIABILITY
@@ -1577,15 +1535,9 @@ enum AccountType {
   OVERSEAS_TAX_PAYABLE
   OUTPUT_TAX
   DEFERRED_TAX_LIABILITY
-  
-  // Equity sub-types
   EQUITY
-  
-  // Income sub-types
   INCOME
   OTHER_INCOME
-  
-  // Expense sub-types
   EXPENSE
   COST_OF_GOODS_SOLD
   OTHER_EXPENSE
@@ -1721,13 +1673,6 @@ enum PaymentTerms {
   CUSTOM
 }
 
-enum DepositType {
-  CASH_IN_HAND
-  BANK_DEPOSIT
-  PETTY_CASH
-  UNDEPOSITED_FUNDS
-}
-
 enum Currency {
   MMK
   USD
@@ -1757,29 +1702,28 @@ enum AIInsightType {
 }
 
 enum AutomationLevel {
-  MANUAL              // User-created
-  AI_SUGGESTED        // AI suggested, user approved
-  AI_AUTOMATED        // Fully automated by AI
-  AI_LEARNED          // AI learned from patterns
+  MANUAL
+  AI_SUGGESTED
+  AI_AUTOMATED
+  AI_LEARNED
 }
 
 enum InsightType {
-  OPPORTUNITY          // Revenue growth opportunity
-  RISK                 // Financial risk detected
-  OPTIMIZATION         // Process improvement
-  PREDICTION           // Forecast insight
-  ANOMALY              // Unusual pattern detected
-  BENCHMARK            // Industry comparison
+  OPPORTUNITY
+  RISK
+  OPTIMIZATION
+  PREDICTION
+  ANOMALY
+  BENCHMARK
 }
 
 enum InsightPriority {
-  CRITICAL             // Immediate attention required
-  HIGH                 // Important, address soon
-  MEDIUM               // Moderate priority
-  LOW                  // FYI/background
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
 }
 
-// Phase 3 Enums for Enhanced Conversational AI
 enum ConversationStatus {
   ACTIVE
   PAUSED

@@ -205,18 +205,29 @@ export class BankTransactionService {
       }
     });
 
-    journalEntries.push({
-      id: cashEntry.id,
-      account: {
-        id: cashAccount.id,
-        name: cashAccount.name,
-        code: cashAccount.code,
-        type: cashAccount.type
-      },
-      debitAmount: isDeposit ? amount : 0,
-      creditAmount: isDeposit ? 0 : amount,
-      description: cashEntry.description
-    });
+          journalEntries.push({
+        id: cashEntry.id,
+        account: {
+          id: cashAccount.id,
+          name: cashAccount.name,
+          code: cashAccount.code,
+          type: cashAccount.type
+        },
+        debitAmount: isDeposit ? amount : 0,
+        creditAmount: isDeposit ? 0 : amount,
+        description: cashEntry.description
+      });
+
+      // Update the cash account balance based on the journal entry
+      const balanceChange = isDeposit ? amount : -amount;
+      await tx.account.update({
+        where: { id: cashAccount.id },
+        data: {
+          balance: {
+            increment: balanceChange
+          }
+        }
+      });
 
     // Entry 2: Contra Account
     let contraAccount;
@@ -274,6 +285,17 @@ export class BankTransactionService {
         debitAmount: contraEntryType === 'DEBIT' ? amount : 0,
         creditAmount: contraEntryType === 'CREDIT' ? amount : 0,
         description: contraEntry.description
+      });
+
+      // Update the contra account balance based on the journal entry
+      const contraBalanceChange = contraEntryType === 'DEBIT' ? amount : -amount;
+      await tx.account.update({
+        where: { id: contraAccount.id },
+        data: {
+          balance: {
+            increment: contraBalanceChange
+          }
+        }
       });
     }
 
@@ -335,6 +357,25 @@ export class BankTransactionService {
           description: feeCashEntry.description
         }
       );
+
+      // Update account balances for bank fees
+      await tx.account.update({
+        where: { id: feeExpenseAccount.id },
+        data: {
+          balance: {
+            increment: data.bankFee // Expense accounts increase with debit
+          }
+        }
+      });
+
+      await tx.account.update({
+        where: { id: cashAccount.id },
+        data: {
+          balance: {
+            increment: -data.bankFee // Cash decreases with credit
+          }
+        }
+      });
     }
 
     return journalEntries;
@@ -387,20 +428,22 @@ export class BankTransactionService {
    * 🏦 FIND OR CREATE CASH ACCOUNT FOR PAYMENT METHOD
    */
   private static async findOrCreateCashAccount(tx: any, paymentMethod: any, tenantId: string) {
-    // Get default book
-    const book = await tx.book.findFirst({
-      where: { tenantId, isDefault: true }
-    });
+    // If payment method is linked to a chart account, use that account directly
+    if (paymentMethod.chartAccountId) {
+      const linked = await tx.account.findUnique({ where: { id: paymentMethod.chartAccountId } });
+      if (linked) return linked;
+    }
 
+    // Fallback: find or create an appropriate cash/bank account
+    const book = await tx.book.findFirst({ where: { tenantId, isDefault: true } });
     if (!book) {
       throw new Error('No default book found for tenant');
     }
 
-    // Generate account code based on payment method type
     let accountCode: string;
     let accountName: string;
-    
-    switch (paymentMethod.type.toLowerCase()) {
+
+    switch ((paymentMethod.type || '').toLowerCase()) {
       case 'cash':
         accountCode = '1111';
         accountName = 'Cash';

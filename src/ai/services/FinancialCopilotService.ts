@@ -108,11 +108,22 @@ export class FinancialCopilotService {
       // 3. Perform semantic search for relevant data
       const relevantData = await this.findRelevantData(query.query, query.tenantId, intent.intent);
       
-      // 4. Generate AI response with OpenAI
+      // 4. Generate AI response with OpenAI using FULL ENHANCED CONTEXT
       const aiResponse = await this.openAI.processFinancialQuery(query.query, {
         tenantId: query.tenantId,
         userId: query.userId,
+        // Pass ALL the enhanced financial context
         businessProfile: context.businessProfile,
+        profitLoss: context.profitLoss,
+        cashFlow: context.cashFlow,
+        trialBalance: context.trialBalance,
+        topCustomers: context.topCustomers,
+        topVendors: context.topVendors,
+        inventory: context.inventory,
+        cogs: context.cogs,
+        banking: context.banking,
+        recentActivity: context.recentActivity,
+        // Legacy fields for compatibility
         recentTransactions: relevantData.transactions,
         financialSummary: context.financialSummary
       });
@@ -239,69 +250,384 @@ export class FinancialCopilotService {
   // ===== PRIVATE METHODS =====
 
   /**
-   * Gather comprehensive financial context
+   * Gather comprehensive financial context with real business intelligence
    */
   private async gatherFinancialContext(query: CopilotQuery, intent: any) {
     const { tenantId } = query;
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    
+    try {
+      // Get comprehensive business context
+      const [
+        businessProfile,
+        trialBalance,
+        profitLoss,
+        cashFlow,
+        topCustomers,
+        topVendors,
+        cogsAnalysis,
+        inventorySummary,
+        bankingStatus,
+        recentTransactions
+      ] = await Promise.all([
+        // Business Profile
+        prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { name: true, baseCurrency: true, settings: true }
+        }),
+        
+        // Trial Balance (Chart of Accounts with balances)
+        prisma.account.findMany({
+          where: { tenantId },
+          select: { 
+            code: true, 
+            name: true, 
+            type: true, 
+            balance: true
+          },
+          orderBy: { code: 'asc' }
+        }),
+        
+        // Profit & Loss Analysis
+        this.calculateProfitLoss(tenantId),
+        
+        // Cash Flow Summary
+        this.calculateCashFlow(tenantId),
+        
+        // Top Customers by Revenue
+        prisma.invoice.groupBy({
+          by: ['customerId'],
+          where: { 
+            tenantId, 
+            status: { in: ['SENT', 'PAID'] },
+            issueDate: { gte: new Date(new Date().getFullYear(), 0, 1) } // This year
+          },
+          _sum: { totalAmount: true },
+          _count: { id: true },
+          orderBy: { _sum: { totalAmount: 'desc' } },
+          take: 5
+        }),
+        
+        // Top Vendors by Spending
+        prisma.bill.groupBy({
+          by: ['vendorId'],
+          where: { 
+            tenantId,
+            billDate: { gte: new Date(new Date().getFullYear(), 0, 1) } // This year
+          },
+          _sum: { totalAmount: true },
+          _count: { id: true },
+          orderBy: { _sum: { totalAmount: 'desc' } },
+          take: 5
+        }),
+        
+        // COGS Analysis
+        this.getCOGSAnalysis(tenantId),
+        
+        // Inventory Summary
+        prisma.inventoryItem.findMany({
+          where: { tenantId },
+          select: {
+            sku: true,
+            description: true,
+            quantityOnHand: true,
+            unitCost: true,
+            costLayers: {
+              select: { remainingQuantity: true, unitCost: true }
+            }
+          },
+          orderBy: { quantityOnHand: 'desc' },
+          take: 10
+        }),
+        
+        // Banking Status
+        prisma.bankAccount.findMany({
+          where: { tenantId },
+          select: { 
+            accountNumber: true, 
+            accountType: true, 
+            balance: true, 
+            currency: true 
+          }
+        }),
+        
+        // Recent Transactions (Last 30 days) - Using simplified approach
+        []
+      ]);
 
-    // Get business profile
-    const businessProfile = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { name: true, baseCurrency: true, settings: true }
-    });
+      // Enrich customer data
+      const customerIds = topCustomers.map((c: any) => c.customerId).filter(Boolean);
+      const customerDetails = customerIds.length > 0 ? await prisma.customer.findMany({
+        where: { id: { in: customerIds } },
+        select: { id: true, name: true, email: true }
+      }) : [];
 
-    // Get recent financial summary
-    const [recentInvoices, recentExpenses, recentPayments] = await Promise.all([
-      prisma.invoice.findMany({
-        where: { tenantId, createdAt: { gte: thirtyDaysAgo } },
-        select: { id: true, totalAmount: true, status: true, issueDate: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      }),
-      prisma.expense.findMany({
-        where: { tenantId, createdAt: { gte: thirtyDaysAgo } },
-        select: { id: true, totalAmount: true, status: true, expenseDate: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      }),
-      prisma.paymentReceived.findMany({
-        where: { tenantId, createdAt: { gte: thirtyDaysAgo } },
-        select: { id: true, amount: true, paymentDate: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      })
-    ]);
+      // Enrich vendor data
+      const vendorIds = topVendors.map((v: any) => v.vendorId).filter(Boolean);
+      const vendorDetails = vendorIds.length > 0 ? await prisma.vendor.findMany({
+        where: { id: { in: vendorIds } },
+        select: { id: true, name: true, email: true }
+      }) : [];
 
-    // Calculate financial summary
-    const totalRevenue = recentInvoices
-      .filter(inv => inv.status === 'PAID')
-      .reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
+      return {
+        businessProfile,
+        
+        // Financial Position
+        trialBalance: {
+          accounts: trialBalance,
+          totalAssets: trialBalance.filter((a: any) => a.type?.includes('ASSET')).reduce((sum: number, a: any) => sum + Number(a.balance || 0), 0),
+          totalLiabilities: trialBalance.filter((a: any) => a.type?.includes('LIABILITY') || a.type?.includes('PAYABLE')).reduce((sum: number, a: any) => sum + Math.abs(Number(a.balance || 0)), 0),
+          totalEquity: trialBalance.filter((a: any) => a.type?.includes('EQUITY')).reduce((sum: number, a: any) => sum + Math.abs(Number(a.balance || 0)), 0)
+        },
+        
+        // Performance Metrics
+        profitLoss: profitLoss || {
+          revenue: 0,
+          cogs: 0,
+          grossProfit: 0,
+          expenses: 0,
+          netIncome: 0,
+          grossMargin: 0,
+          netMargin: 0
+        },
+        
+        // Cash Flow
+        cashFlow: cashFlow || {
+          operatingCashFlow: 0,
+          investingCashFlow: 0,
+          financingCashFlow: 0,
+          netCashFlow: 0,
+          cashPosition: bankingStatus.reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0)
+        },
+        
+        // Business Intelligence
+        topCustomers: topCustomers.map((tc: any) => ({
+          ...tc,
+          customer: customerDetails.find(c => c.id === tc.customerId),
+          revenue: Number(tc._sum.totalAmount || 0),
+          invoiceCount: tc._count.id
+        })),
+        
+        topVendors: topVendors.map((tv: any) => ({
+          ...tv,
+          vendor: vendorDetails.find(v => v.id === tv.vendorId),
+          spending: Number(tv._sum.totalAmount || 0),
+          billCount: tv._count.id
+        })),
+        
+        // Inventory Intelligence
+        inventory: {
+          items: inventorySummary,
+          totalValue: inventorySummary.reduce((sum: number, item: any) => sum + (Number(item.quantityOnHand || 0) * Number(item.unitCost || 0)), 0),
+          totalQuantity: inventorySummary.reduce((sum: number, item: any) => sum + Number(item.quantityOnHand || 0), 0),
+          lowStockItems: inventorySummary.filter((item: any) => Number(item.quantityOnHand || 0) < 10)
+        },
+        
+        // COGS Analysis
+        cogs: cogsAnalysis,
+        
+        // Banking Summary
+        banking: {
+          accounts: bankingStatus,
+          totalCash: bankingStatus.reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0),
+          accountCount: bankingStatus.length
+        },
+        
+        // Recent Activity Context
+        recentActivity: {
+          journalEntries: recentTransactions.length,
+          lastTransactionDate: recentTransactions.length > 0 ? recentTransactions[0] : null,
+          recentTransactions: []
+        },
+        
+        // Legacy financial summary for compatibility
+        financialSummary: {
+          totalRevenue: profitLoss?.revenue || 0,
+          totalExpenses: profitLoss?.expenses || 0,
+          netIncome: profitLoss?.netIncome || 0,
+          recentInvoiceCount: topCustomers?.length || 0,
+          recentExpenseCount: 0,
+          recentPaymentCount: 0
+        }
+      };
       
-    const totalExpenses = recentExpenses
-      .reduce((sum, exp) => sum + Number(exp.totalAmount), 0);
-      
-    const totalPayments = recentPayments
-      .reduce((sum, pay) => sum + Number(pay.amount), 0);
+    } catch (error) {
+      console.error('❌ Error gathering financial context:', error);
+      return {
+        businessProfile: { name: 'Unknown Business', baseCurrency: 'USD' },
+        error: 'Failed to gather financial context'
+      };
+    }
+  }
 
-    return {
-      businessProfile,
-      financialSummary: {
-        totalRevenue,
-        totalExpenses,
-        totalPayments,
-        netIncome: totalRevenue - totalExpenses,
-        recentInvoiceCount: recentInvoices.length,
-        recentExpenseCount: recentExpenses.length,
-        recentPaymentCount: recentPayments.length
-      },
-      recentData: {
-        invoices: recentInvoices,
-        expenses: recentExpenses,
-        payments: recentPayments
-      }
-    };
+  /**
+   * Calculate Profit & Loss metrics using the SAME logic as P&L reports
+   */
+  private async calculateProfitLoss(tenantId: string) {
+    try {
+      // CRITICAL FIX: Use EXACT SAME logic as P&L report - NO DATE FILTER!
+      // The P&L report doesn't filter by date when called with period=this_month
+      // It only filters if explicit startDate/endDate are provided
+      console.log(`🗓️ AI P&L Calculation: Using NO date filter (same as P&L report)`);
+      
+      const accounts = await prisma.account.findMany({
+        where: {
+          tenantId,
+          type: { in: ['INCOME', 'OTHER_INCOME', 'EXPENSE', 'COST_OF_GOODS_SOLD', 'OTHER_EXPENSE'] },
+          isActive: true
+        },
+        include: {
+          entries: {
+            // NO DATE FILTER - get all entries like the P&L report does
+          }
+        },
+        orderBy: [
+          { type: 'asc' },
+          { code: 'asc' }
+        ]
+      });
+      
+      console.log(`🔍 AI found ${accounts.length} accounts for P&L calculation`);
+
+      let totalRevenue = 0;
+      let totalExpenses = 0;
+      let totalCOGS = 0;
+
+      // FIXED: Use EXACT SAME logic as P&L report controller
+      accounts.forEach((account: any) => {
+        const debits = account.entries
+          .filter((entry: any) => entry.type === 'DEBIT')
+          .reduce((sum: number, entry: any) => sum + parseFloat(entry.amount.toString()), 0);
+        
+        const credits = account.entries
+          .filter((entry: any) => entry.type === 'CREDIT')
+          .reduce((sum: number, entry: any) => sum + parseFloat(entry.amount.toString()), 0);
+
+        const isIncomeAccount = ['INCOME', 'OTHER_INCOME'].includes(account.type);
+        const netAmount = isIncomeAccount ? credits - debits : debits - credits;
+
+        console.log(`💰 Account ${account.code} (${account.name}): Type=${account.type}, Debits=${debits}, Credits=${credits}, NetAmount=${netAmount}, Entries=${account.entries.length}`);
+
+        if (['INCOME', 'OTHER_INCOME'].includes(account.type)) {
+          totalRevenue += Math.abs(netAmount);
+        } else {
+          // All expense types grouped together (same as P&L report)
+          totalExpenses += Math.abs(netAmount);
+        }
+      });
+      
+      // FIXED: COGS is now included in totalExpenses (same as P&L report)
+      const grossProfit = totalRevenue; // Same as P&L report
+      const netIncome = totalRevenue - totalExpenses;
+      const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+      const netMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
+      
+      console.log(`🧮 AI P&L Calculation (FIXED): Revenue=${totalRevenue}, Expenses=${totalExpenses}, NetIncome=${netIncome}`);
+      
+      return {
+        revenue: totalRevenue,
+        cogs: 0, // COGS is included in totalExpenses
+        grossProfit,
+        expenses: totalExpenses,
+        netIncome,
+        grossMargin,
+        netMargin,
+        period: 'This Month'
+      };
+    } catch (error) {
+      console.error('❌ Error calculating P&L:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate Cash Flow metrics
+   */
+  private async calculateCashFlow(tenantId: string) {
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      
+      // Operating cash flow (payments received - payments made)
+      const [paymentsReceived, paymentsMade] = await Promise.all([
+        prisma.paymentReceived.aggregate({
+          where: { 
+            tenantId, 
+            paymentDate: { gte: thirtyDaysAgo }
+          },
+          _sum: { amount: true }
+        }),
+        prisma.vendorPayment.aggregate({
+          where: { 
+            tenantId, 
+            paymentDate: { gte: thirtyDaysAgo }
+          },
+          _sum: { amount: true }
+        })
+      ]);
+      
+      const operatingCashFlow = Number(paymentsReceived._sum.amount || 0) - Number(paymentsMade._sum.amount || 0);
+      
+      return {
+        operatingCashFlow,
+        investingCashFlow: 0, // TODO: Calculate from asset purchases
+        financingCashFlow: 0,  // TODO: Calculate from loans/equity
+        netCashFlow: operatingCashFlow,
+        period: 'Last 30 Days'
+      };
+    } catch (error) {
+      console.error('❌ Error calculating cash flow:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get COGS Analysis
+   */
+  private async getCOGSAnalysis(tenantId: string) {
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      
+      const cogsCalculations = await prisma.cOGSCalculation.findMany({
+        where: { 
+          tenantId,
+          createdAt: { gte: thirtyDaysAgo }
+        },
+        include: {
+          invoiceItem: {
+            include: {
+              inventoryItem: { select: { sku: true, description: true } }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      });
+      
+      const totalCOGS = cogsCalculations.reduce((sum, calc) => sum + Number(calc.totalCOGS || 0), 0);
+      const totalQuantity = cogsCalculations.reduce((sum, calc) => sum + Number(calc.quantitySold || 0), 0);
+      
+      return {
+        totalCOGS,
+        totalQuantity,
+        averageCostPerUnit: totalQuantity > 0 ? totalCOGS / totalQuantity : 0,
+        recentCalculations: cogsCalculations.length,
+        topCogsItems: cogsCalculations.slice(0, 5).map(calc => ({
+          sku: calc.invoiceItem?.inventoryItem?.sku || 'Unknown',
+          description: calc.invoiceItem?.inventoryItem?.description || 'Unknown',
+          quantity: Number(calc.quantitySold),
+          cost: Number(calc.totalCOGS),
+          date: calc.createdAt
+        }))
+      };
+    } catch (error) {
+      console.error('❌ Error getting COGS analysis:', error);
+      return {
+        totalCOGS: 0,
+        totalQuantity: 0,
+        averageCostPerUnit: 0,
+        recentCalculations: 0,
+        topCogsItems: []
+      };
+    }
   }
 
   /**

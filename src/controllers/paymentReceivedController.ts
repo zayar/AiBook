@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AccountingService } from '../accounting/AccountingService';
 import { JournalEntryEngine } from '../accounting/engines/JournalEntryEngine';
+import { financialEventIntegration } from '../services/financialEventIntegration';
 
 const prisma = new PrismaClient();
 
@@ -340,6 +341,34 @@ export class PaymentReceivedController {
           }
         }
       });
+
+      // 🚀 Publish payment received event to streaming pipeline
+      try {
+        await financialEventIntegration.publishPaymentReceived({
+          paymentId: fullPayment!.id,
+          tenantId: fullPayment!.tenantId,
+          customerId: fullPayment!.customerId || 'walk-in-customer',
+          customerName: fullPayment!.customerName || fullPayment!.customer?.name || 'Walk-in Customer',
+          amount: parseFloat(fullPayment!.amount.toString()),
+          currency: 'USD', // Default currency - add to schema if needed
+          paymentMethod: fullPayment!.paymentMode,
+          paymentDate: fullPayment!.paymentDate,
+          invoices: fullPayment!.invoicePayments?.map(ip => ({
+            invoiceId: ip.invoiceId,
+            allocatedAmount: parseFloat((ip.amountAllocated || 0).toString()),
+          })),
+          bankAccount: fullPayment!.depositToAccountId ? {
+            accountId: fullPayment!.depositToAccountId,
+            accountName: 'Deposit Account', // You might want to fetch actual account name
+          } : undefined,
+          fees: fullPayment!.bankCharges ? parseFloat(fullPayment!.bankCharges.toString()) : undefined,
+          notes: fullPayment!.notes || undefined,
+        });
+        console.log('📤 Payment received event published to stream');
+      } catch (streamError) {
+        console.warn('⚠️ Failed to publish payment event to stream:', (streamError as Error).message);
+        // Don't fail the payment creation if streaming fails
+      }
 
       res.status(201).json({
         success: true,

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+// API Configuration - Use Next.js proxy
+const API_BASE_URL = '/api/v1';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -20,10 +20,9 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Add tenant ID for development mode
-    if (process.env.NODE_ENV === 'development') {
-      config.headers['X-Tenant-ID'] = 'default';
-    }
+    // Add tenant ID
+    const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+    config.headers['x-tenant-id'] = tenantId;
     
     return config;
   },

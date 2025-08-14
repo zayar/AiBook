@@ -7,6 +7,7 @@ const router = Router();
 router.get('/overview', BankingController.getBankingOverview);
 router.get('/payment-methods', BankingController.getPaymentMethods);
 router.post('/payment-methods', BankingController.createPaymentMethod);
+router.post('/payment-methods-simple', BankingController.createPaymentMethodSimple);
 router.put('/payment-methods/:id', BankingController.updatePaymentMethod);
 router.delete('/payment-methods/:id', BankingController.deletePaymentMethod);
 
@@ -16,5 +17,8 @@ router.post('/payment-methods/:paymentMethodId/transactions', BankingController.
 router.get('/payment-methods/:paymentMethodId/insights', BankingController.getTransactionInsights);
 router.post('/payment-methods/:paymentMethodId/reconcile', BankingController.reconcileTransactions);
 router.get('/payment-methods/:paymentMethodId/reconciliation-history', BankingController.getReconciliationHistory);
+
+// Account balance management
+router.post('/recalculate-balances', BankingController.recalculateAccountBalances);
 
 export default router; 

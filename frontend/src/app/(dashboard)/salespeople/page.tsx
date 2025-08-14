@@ -26,7 +26,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { salespersonAPI, Salesperson } from '@/lib/salesperson-api';
-import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
+import SalespeopleLoading from '@/components/SalespeopleLoading';
 import Link from 'next/link';
 
 export default function Salespeople() {
@@ -157,7 +157,7 @@ export default function Salespeople() {
   };
 
   if (loading) {
-    return <UltraEnhancedLoading />;
+    return <SalespeopleLoading />;
   }
 
   return (

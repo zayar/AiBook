@@ -167,7 +167,8 @@ export class CostLayerController {
 
       // Calculate COGS
       const cogsResult = await accountingService.calculateCOGS({
-        invoiceItemId: `temp-${Date.now()}`, // Temporary ID for manual calculation
+        // Use a synthetic but non-FK-bound reference value to avoid FK constraint
+        invoiceItemId: `TEMP-${Date.now()}`,
         inventoryItemId,
         quantitySold: parseFloat(quantitySold),
         saleDate: saleDate ? new Date(saleDate) : new Date(),

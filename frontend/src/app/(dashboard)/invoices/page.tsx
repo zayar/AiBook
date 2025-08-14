@@ -148,7 +148,7 @@ export default function InvoicesPage() {
 
   const fetchAIInsights = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/ai/insights?period=3m`);
+      const response = await fetch('/api/v1/ai/insights?period=3m');
       if (response.ok) {
         const data = await response.json();
         
@@ -254,11 +254,15 @@ export default function InvoicesPage() {
 
   const handleSendInvoice = async (invoiceId: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${invoiceId}/send`, {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      
+      const response = await fetch(`/api/v1/invoices/${invoiceId}/send`, {
         method: 'POST',
         headers: { 
-          'X-Tenant-ID': 'default',
-          'Content-Type': 'application/json'
+          'x-tenant-id': tenantId,
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
       });
 

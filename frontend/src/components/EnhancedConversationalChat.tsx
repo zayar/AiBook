@@ -37,12 +37,13 @@ export default function EnhancedConversationalChat() {
 
   // Quick suggestion prompts
   const suggestionPrompts = [
-    "Show me this month's profit and loss",
+    "What's this month's profit?",
+    "Show me cash flow trends",
+    "Who are my top customers?",
     "What are my biggest expenses?",
-    "Generate a cash flow report",
-    "Give me business insights",
-    "How much revenue did I make this quarter?",
-    "Show me recent transactions"
+    "How's my invoice collection?",
+    "What's my bank balance?",
+    "Show vendor spending patterns"
   ];
 
   // Initialize speech recognition
@@ -101,17 +102,16 @@ export default function EnhancedConversationalChat() {
         const welcomeMessage: Message = {
           id: 'welcome',
           role: 'assistant',
-          content: `Welcome! I'm your AI financial assistant. I can help you with:
+          content: `👋 Hello! I'm your AI Financial Assistant. I'm ready to help with financial analysis and insights, but I notice you haven't connected any financial accounts yet.
 
-📊 **Financial Reports** - "Show me profit & loss for this quarter"
-💰 **Data Analysis** - "What are my top expenses this month?"
-📈 **Business Insights** - "Give me insights about my business"
-💳 **Transaction Queries** - "Show recent transactions over $1000"
-🔍 **Custom Analysis** - Ask me anything about your financial data!
-
-What would you like to explore today?`,
+Once you connect your accounts, I'll be able to provide real-time analysis, generate reports, and give personalized recommendations. How can I assist you today?`,
           timestamp: new Date(),
-          followUpQuestions: suggestionPrompts.slice(0, 3)
+          followUpQuestions: [
+            "How do I connect my bank account?",
+            "What data do you need to get started?",
+            "Help me set up my accounts",
+            "What currency is this in? (USD)"
+          ]
         };
 
         setMessages([welcomeMessage]);

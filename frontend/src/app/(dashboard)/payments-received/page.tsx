@@ -18,7 +18,7 @@ import {
   Mail
 } from 'lucide-react';
 import { paymentReceivedAPI, PaymentReceived } from '@/lib/payment-received-api';
-import UltraEnhancedLoading from '@/components/UltraEnhancedLoading';
+import PaymentsLoading from '@/components/PaymentsLoading';
 import Link from 'next/link';
 
 const PaymentModeIcons = {
@@ -109,7 +109,7 @@ export default function PaymentsReceivedPage() {
   };
 
   if (loading) {
-    return <UltraEnhancedLoading />;
+    return <PaymentsLoading />;
   }
 
   return (

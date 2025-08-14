@@ -197,7 +197,7 @@ function NewInvoiceContent() {
         seriesOffset: invoiceNumberSettings.seriesOffset.toString()
       });
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/next-number?${params}`);
+      const response = await fetch(`/api/v1/invoices/next-number?${params}`);
       if (response.ok) {
         const data = await response.json();
         setFormData(prev => ({ ...prev, invoiceNumber: data.invoiceNumber }));
@@ -318,7 +318,7 @@ function NewInvoiceContent() {
 
   const loadInvoiceForDuplication = async (invoiceId: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${invoiceId}`);
+      const response = await fetch(`/api/v1/invoices/${invoiceId}`);
       if (response.ok) {
         const data = await response.json();
         const invoice = data.invoice;
@@ -353,11 +353,15 @@ function NewInvoiceContent() {
 
     setLoadingAI(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/ai-suggestions`, {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      
+      const response = await fetch('/api/v1/invoices/ai-suggestions', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default'
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
           customerId: formData.customerId,
@@ -508,11 +512,15 @@ function NewInvoiceContent() {
         status: action === 'send' ? 'SENT' : 'DRAFT'
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices`, {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      
+      const response = await fetch('/api/v1/invoices', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default'
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: JSON.stringify(invoiceData)
       });
@@ -523,9 +531,12 @@ function NewInvoiceContent() {
         console.log('✅ Invoice created successfully:', data.invoice);
         if (action === 'send') {
           // Send the invoice
-          await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'}/invoices/${data.invoice.id}/send`, {
+          await fetch(`/api/v1/invoices/${data.invoice.id}/send`, {
             method: 'POST',
-            headers: { 'X-Tenant-ID': 'default' }
+            headers: { 
+              'x-tenant-id': tenantId,
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            }
           });
         }
         
@@ -559,7 +570,8 @@ function NewInvoiceContent() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default'
+          'x-tenant-id': (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default',
+          ...((typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) ? { Authorization: `Bearer ${(typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token')))}` } : {})
         },
         body: JSON.stringify({ action, data })
       });

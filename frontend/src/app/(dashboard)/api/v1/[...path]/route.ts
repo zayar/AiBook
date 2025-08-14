@@ -13,7 +13,12 @@ export async function GET(
     const queryString = url.search;
     
     const backendUrl = `${BACKEND_URL}/${path}${queryString}`;
+    console.log('=== FRONTEND PROXY GET ===');
+    console.log('Original URL:', request.url);
+    console.log('Path:', path);
+    console.log('Query:', queryString);
     console.log('Proxying request to:', backendUrl);
+    console.log('Headers to send:', { 'x-tenant-id': 'default' });
     
     const response = await fetch(backendUrl, {
       method: 'GET',
@@ -22,8 +27,9 @@ export async function GET(
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'X-Tenant-ID': 'default', // Development mode
-      }
+        'x-tenant-id': 'default', // Development mode
+      },
+      cache: 'no-store' // Disable Next.js caching
     });
 
     if (!response.ok) {
@@ -86,9 +92,10 @@ export async function POST(
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'X-Tenant-ID': 'default', // Development mode
+        'x-tenant-id': 'default', // Development mode
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      cache: 'no-store' // Disable Next.js caching
     });
 
     console.log('Backend response status:', response.status);
@@ -142,7 +149,7 @@ export async function PUT(
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'X-Tenant-ID': 'default',
+        'x-tenant-id': 'default',
         ...(request.headers.get('authorization') ? { Authorization: request.headers.get('authorization') as string } : {})
       },
       body
@@ -185,7 +192,7 @@ export async function DELETE(
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
-        'X-Tenant-ID': 'default', // Development mode
+        'x-tenant-id': 'default', // Development mode
         ...Object.fromEntries(request.headers.entries())
       }
     });

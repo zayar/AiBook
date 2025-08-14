@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { AccountingService } from '@/accounting/AccountingService';
-import { CreateJournalEntryRequest } from '@/types';
+import { AccountingService } from '../accounting/AccountingService';
+import { CreateJournalEntryRequest } from '../types';
 
 export class TransactionController {
   /**

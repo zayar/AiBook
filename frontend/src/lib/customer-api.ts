@@ -1,18 +1,25 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1',
+  baseURL: '/api/v1', // Use Next.js proxy
   headers: {
     'Content-Type': 'application/json',
   },
   withCredentials: false,
 });
 
-// Add request interceptor to include tenant ID for development
+// Add request interceptor to include tenant ID and auth
 api.interceptors.request.use((config) => {
-  if (process.env.NODE_ENV === 'development') {
-    config.headers['X-Tenant-ID'] = 'default';
+  // Add tenant ID
+  const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+  config.headers['x-tenant-id'] = tenantId;
+  
+  // Add auth token if available
+  const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
+  
   console.log('🔍 Making API request:', config.method?.toUpperCase(), config.url);
   return config;
 });

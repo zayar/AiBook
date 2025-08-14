@@ -44,6 +44,8 @@ interface BankAccount {
   lastReconciled: string | null;
   isDefault: boolean;
   isActive: boolean;
+  chartAccountCode?: string;
+  chartAccountName?: string;
 }
 
 interface BankTransaction {
@@ -76,10 +78,14 @@ const BankingPage: React.FC = () => {
       setLoading(true);
       
       // Load payment methods (bank accounts)
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      
       const bankResponse = await fetch(`${API_URL}/banking/payment-methods`, {
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default'
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
       });
 
@@ -102,7 +108,9 @@ const BankingPage: React.FC = () => {
           unreconciledTransactions: pm.unreconciledTransactions || 0,
           lastReconciled: pm.lastReconciled || null,
           isDefault: pm.isDefault || false,
-          isActive: pm.isActive !== false
+          isActive: pm.isActive !== false,
+          chartAccountCode: pm.chartAccountCode || null,
+          chartAccountName: pm.chartAccountName || null
         }));
         
         setBankAccounts(transformedAccounts);
@@ -206,13 +214,17 @@ const BankingPage: React.FC = () => {
 
   const handleSaveBank = async (bank: any) => {
     try {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      
       if (editingBank) {
         // Update existing bank
         const response = await fetch(`${API_URL}/banking/payment-methods/${editingBank.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'X-Tenant-ID': 'default'
+            'x-tenant-id': tenantId,
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
           },
           body: JSON.stringify(bank)
         });
@@ -236,7 +248,9 @@ const BankingPage: React.FC = () => {
             unreconciledTransactions: paymentMethod.unreconciledTransactions || 0,
             lastReconciled: paymentMethod.lastReconciled || null,
             isDefault: paymentMethod.isDefault || false,
-            isActive: paymentMethod.isActive !== false
+            isActive: paymentMethod.isActive !== false,
+            chartAccountCode: paymentMethod.chartAccountCode || null,
+            chartAccountName: paymentMethod.chartAccountName || null
           };
           setBankAccounts(prev => prev.map(b => b.id === editingBank.id ? transformedAccount : b));
         }
@@ -246,7 +260,8 @@ const BankingPage: React.FC = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Tenant-ID': 'default'
+            'x-tenant-id': tenantId,
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
           },
           body: JSON.stringify(bank)
         });
@@ -270,7 +285,9 @@ const BankingPage: React.FC = () => {
             unreconciledTransactions: paymentMethod.unreconciledTransactions || 0,
             lastReconciled: paymentMethod.lastReconciled || null,
             isDefault: paymentMethod.isDefault || false,
-            isActive: paymentMethod.isActive !== false
+            isActive: paymentMethod.isActive !== false,
+            chartAccountCode: paymentMethod.chartAccountCode || null,
+            chartAccountName: paymentMethod.chartAccountName || null
           };
           setBankAccounts(prev => [...prev, transformedAccount]);
         }
@@ -401,6 +418,9 @@ const BankingPage: React.FC = () => {
                     Account
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Chart Code
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Type
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -432,6 +452,11 @@ const BankingPage: React.FC = () => {
                           <div className="text-sm text-gray-500">{account.accountNumber}</div>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                        {account.chartAccountCode || 'N/A'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">

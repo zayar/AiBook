@@ -64,6 +64,7 @@ const NewItemPage = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(false);
   const [aiAssistActive, setAiAssistActive] = useState(true);
+  const [userEditedFields, setUserEditedFields] = useState<Set<string>>(new Set());
 
   // Common categories
   const commonCategories = [
@@ -98,17 +99,28 @@ const NewItemPage = () => {
     }
   }, [formData.name, formData.description, aiAssistActive]);
 
-  // Auto-suggest pricing when cost is entered
+  // Auto-suggest pricing when cost is entered (only if price is still 0 and not user-edited)
   useEffect(() => {
-    if (aiAssistActive && formData.unitCost > 0 && formData.unitPrice === 0) {
-      suggestPricing();
+    if (aiAssistActive && formData.unitCost > 0 && formData.unitPrice === 0 && !userEditedFields.has('unitPrice')) {
+      // Add a small delay to prevent conflicts with user input
+      const timer = setTimeout(() => {
+        if (formData.unitPrice === 0 && !userEditedFields.has('unitPrice')) { // Check again after delay
+          suggestPricing();
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  }, [formData.unitCost, aiAssistActive]);
+  }, [formData.unitCost, aiAssistActive, userEditedFields]);
 
   const loadAccounts = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/accounts`, {
-        headers: { 'X-Tenant-ID': 'default' },
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      const response = await fetch(`/api/v1/accounts`, {
+        headers: {
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
       
       if (response.ok) {
@@ -142,11 +154,14 @@ const NewItemPage = () => {
   const handleAIAssist = async (action: string, data: any) => {
     try {
       setAiLoading(true);
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/items/ai-assist`, {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      const response = await fetch(`/api/v1/items/ai-assist`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default',
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ action, data }),
       });
@@ -163,12 +178,17 @@ const NewItemPage = () => {
   };
 
   const generateSmartSKU = async () => {
+    // Don't override if user has manually edited the SKU
+    if (userEditedFields.has('sku')) {
+      return;
+    }
+    
     const result = await handleAIAssist('generate_sku', {
       name: formData.name,
       category: formData.category,
     });
     
-    if (result?.sku) {
+    if (result?.sku && !userEditedFields.has('sku')) {
       setFormData(prev => ({ ...prev, sku: result.sku }));
       addAISuggestion({
         type: 'sku',
@@ -180,12 +200,17 @@ const NewItemPage = () => {
   };
 
   const suggestCategory = async () => {
+    // Don't override if user has manually edited the category
+    if (userEditedFields.has('category')) {
+      return;
+    }
+    
     const result = await handleAIAssist('suggest_category', {
       name: formData.name,
       description: formData.description,
     });
     
-    if (result?.category) {
+    if (result?.category && !userEditedFields.has('category')) {
       setFormData(prev => ({ ...prev, category: result.category }));
       addAISuggestion({
         type: 'category',
@@ -197,13 +222,18 @@ const NewItemPage = () => {
   };
 
   const suggestPricing = async () => {
+    // Don't suggest pricing if user has manually edited the price
+    if (userEditedFields.has('unitPrice') || formData.unitPrice > 0) {
+      return;
+    }
+    
     const result = await handleAIAssist('suggest_pricing', {
       name: formData.name,
       category: formData.category,
       unitCost: formData.unitCost,
     });
     
-    if (result?.suggestedPrice) {
+    if (result?.suggestedPrice && !userEditedFields.has('unitPrice') && formData.unitPrice === 0) {
       setFormData(prev => ({ ...prev, unitPrice: result.suggestedPrice }));
       addAISuggestion({
         type: 'pricing',
@@ -240,6 +270,9 @@ const NewItemPage = () => {
   const handleInputChange = (field: keyof ItemFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
+    // Mark this field as user-edited to prevent AI from overriding it
+    setUserEditedFields(prev => new Set(prev).add(field));
+    
     // Clear error when field is changed
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -270,11 +303,14 @@ const NewItemPage = () => {
     try {
       setLoading(true);
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/items`, {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      const response = await fetch(`/api/v1/items`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default',
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(formData),
       });
@@ -505,8 +541,11 @@ const NewItemPage = () => {
                         type="number"
                         step="0.01"
                         min="0"
-                        value={formData.unitCost}
-                        onChange={(e) => handleInputChange('unitCost', parseFloat(e.target.value) || 0)}
+                        value={formData.unitCost.toString()}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                          handleInputChange('unitCost', isNaN(value) ? 0 : value);
+                        }}
                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                           errors.unitCost ? 'border-red-300' : 'border-gray-300'
                         }`}
@@ -524,8 +563,11 @@ const NewItemPage = () => {
                         type="number"
                         step="0.01"
                         min="0"
-                        value={formData.unitPrice}
-                        onChange={(e) => handleInputChange('unitPrice', parseFloat(e.target.value) || 0)}
+                        value={formData.unitPrice.toString()}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                          handleInputChange('unitPrice', isNaN(value) ? 0 : value);
+                        }}
                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                           errors.unitPrice ? 'border-red-300' : 'border-gray-300'
                         }`}
@@ -577,8 +619,11 @@ const NewItemPage = () => {
                       <input
                         type="number"
                         min="0"
-                        value={formData.quantityOnHand}
-                        onChange={(e) => handleInputChange('quantityOnHand', parseInt(e.target.value) || 0)}
+                        value={formData.quantityOnHand.toString()}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseInt(e.target.value);
+                          handleInputChange('quantityOnHand', isNaN(value) ? 0 : value);
+                        }}
                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                           errors.quantityOnHand ? 'border-red-300' : 'border-gray-300'
                         }`}
@@ -596,7 +641,10 @@ const NewItemPage = () => {
                         type="number"
                         min="0"
                         value={formData.reorderLevel}
-                        onChange={(e) => handleInputChange('reorderLevel', parseInt(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseInt(e.target.value);
+                          handleInputChange('reorderLevel', isNaN(value) ? 0 : value);
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="0"
                       />
@@ -611,7 +659,10 @@ const NewItemPage = () => {
                         type="number"
                         min="0"
                         value={formData.reorderQuantity}
-                        onChange={(e) => handleInputChange('reorderQuantity', parseInt(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseInt(e.target.value);
+                          handleInputChange('reorderQuantity', isNaN(value) ? 0 : value);
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="0"
                       />

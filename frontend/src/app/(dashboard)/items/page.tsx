@@ -72,27 +72,36 @@ const ItemsPage = () => {
         ...(statusFilter !== 'all' && { isActive: (statusFilter === 'active').toString() }),
       });
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/items?${params}`, {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      
+      const response = await fetch(`/api/v1/items?${params}`, {
         headers: {
-          'X-Tenant-ID': 'default',
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
 
       if (response.ok) {
         const data = await response.json();
-        setItems(data.items);
-        setPagination(data.pagination);
+        console.log('✅ Items API Response:', data);
+        console.log('📦 Items array:', data.items);
+        console.log('📊 Pagination:', data.pagination);
+        
+        setItems(data.items || []);
+        setPagination(data.pagination || { page: 1, limit: 20, total: 0, pages: 0 });
         setInsights(data.insights || { insights: [] });
         
         // Extract unique categories
         const uniqueCategories = [...new Set(
-          data.items
+          (data.items || [])
             .map((item: Item) => item.category)
             .filter((category: string | undefined): category is string => Boolean(category))
         )] as string[];
         setCategories(uniqueCategories);
       } else {
-        console.error('Failed to load items');
+        console.error('❌ Failed to load items, status:', response.status);
+        console.error('❌ Response:', await response.text());
       }
     } catch (error) {
       console.error('Error loading items:', error);
@@ -136,12 +145,18 @@ const ItemsPage = () => {
 
     try {
       await Promise.all(
-        selectedItems.map(itemId =>
-          fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/items/${itemId}`, {
+        selectedItems.map(itemId => {
+          const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+          const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+          
+          return fetch(`/api/v1/items/${itemId}`, {
             method: 'DELETE',
-            headers: { 'X-Tenant-ID': 'default' },
-          })
-        )
+            headers: { 
+              'x-tenant-id': tenantId,
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+        })
       );
       setSelectedItems([]);
       loadItems();
@@ -154,11 +169,15 @@ const ItemsPage = () => {
   const handleAIAssist = async (action: string, data?: any) => {
     try {
       setAiLoading(true);
-              const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/items/ai-assist`, {
+      const tenantId = (typeof window !== 'undefined' && (localStorage.getItem('tenantId') || 'default')) || 'default';
+      const token = (typeof window !== 'undefined' && (localStorage.getItem('authToken') || localStorage.getItem('token'))) || undefined;
+      
+      const response = await fetch('/api/v1/items/ai-assist', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default',
+          'x-tenant-id': tenantId,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ action, data }),
       });

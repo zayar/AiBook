@@ -1,6 +1,25 @@
-# AiBook - AI-First Bookkeeping SaaS
+# 🚀 Cashflow Copilot - AI-First Bookkeeping SaaS
 
 A headless, multi-tenant, multi-currency bookkeeping SaaS built on Google Cloud Platform with AI-powered features.
+
+## ⚡ Quick Start
+
+Get started in under 2 minutes:
+
+```bash
+# Clone and setup
+git clone <repository-url>
+cd AiBook
+
+# Start everything (includes database setup)
+npm run dev:all
+```
+
+**Access your application:**
+- Frontend: http://localhost:3001
+- Backend: http://localhost:3000
+
+👉 **[Complete Quick Start Guide](QUICK_START.md)** | **[Configuration Guide](CONFIGURATION_SAVED.md)**
 
 ## 🚀 Features
 
@@ -550,6 +569,19 @@ Required environment variables for production:
 - `FIREBASE_PRIVATE_KEY`: Firebase private key
 - `OPENAI_API_KEY`: OpenAI API key
 - `GOOGLE_CLOUD_PROJECT`: Google Cloud project ID
+
+## 📚 Documentation
+
+**Comprehensive documentation is organized in the [`docs/`](docs/) directory:**
+
+- **[Documentation Index](docs/README.md)** - Complete documentation guide
+- **[Setup & Configuration](docs/setup/)** - Firebase, GCP, Redis, OpenAI setup
+- **[Architecture](docs/architecture/)** - System design and streaming infrastructure  
+- **[Guides & References](docs/guides/)** - API docs, demos, and implementation examples
+
+**Development:**
+- **[Quick Start Guide](QUICK_START.md)** - Get running in 2 minutes
+- **[Configuration Saved](CONFIGURATION_SAVED.md)** - Pre-configured environment details
 
 ## 📈 Monitoring
 

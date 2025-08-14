@@ -636,14 +636,14 @@ export class COGSController {
         group.totalQuantitySold += parseFloat(calc.quantitySold.toString());
         group.calculationCount += 1;
 
-        if (includeDetails) {
+          if (includeDetails) {
           group.calculations.push({
             id: calc.id,
             calculationDate: calc.calculationDate,
             quantitySold: parseFloat(calc.quantitySold.toString()),
             totalCOGS: parseFloat(calc.totalCOGS.toString()),
             averageCostPerUnit: parseFloat(calc.averageCostPerUnit.toString()),
-            invoiceNumber: calc.invoiceItem.invoice.invoiceNumber,
+              invoiceNumber: calc.invoiceItem?.invoice?.invoiceNumber,
             layerConsumptions: calc.layerConsumptions?.map(consumption => ({
               quantityConsumed: parseFloat(consumption.quantityConsumed.toString()),
               unitCost: parseFloat(consumption.unitCost.toString()),
@@ -783,19 +783,19 @@ export class COGSController {
           calculationDate: calculation.calculationDate,
           journalEntryId: calculation.journalEntryId
         },
-        invoiceItem: {
+        invoiceItem: calculation.invoiceItem ? {
           id: calculation.invoiceItem.id,
           description: calculation.invoiceItem.description,
           quantity: parseFloat(calculation.invoiceItem.quantity.toString()),
           unitPrice: parseFloat(calculation.invoiceItem.unitPrice.toString()),
           totalPrice: parseFloat(calculation.invoiceItem.totalPrice.toString()),
-          invoice: {
+          invoice: calculation.invoiceItem.invoice ? {
             invoiceNumber: calculation.invoiceItem.invoice.invoiceNumber,
             issueDate: calculation.invoiceItem.invoice.issueDate,
-            totalAmount: parseFloat(calculation.invoiceItem.invoice.totalAmount.toString()),
-            customer: calculation.invoiceItem.invoice.customer
-          }
-        },
+            totalAmount: parseFloat(calculation.invoiceItem.invoice.totalAmount?.toString?.() || '0'),
+            customer: calculation.invoiceItem.invoice.customer || null
+          } : null
+        } : null,
         inventoryItem: {
           id: calculation.inventoryItem.id,
           sku: calculation.inventoryItem.sku,

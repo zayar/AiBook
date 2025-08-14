@@ -27,13 +27,21 @@ export class OrganizationProfileController {
   static async getOrganizationProfile(req: Request, res: Response) {
     try {
       console.log('🔍 Organization Profile Request:', {
-        headers: req.headers,
-        tenant: req.tenant,
-        user: req.user
+        tenantMiddleware: req.tenant?.tenantId,
+        headerTenant: req.headers['x-tenant-id'],
+        userTenant: req.user?.tenantId,
+        method: req.method,
+        url: req.url
       });
       
-      const tenantId = req.headers['x-tenant-id'] as string;
-      console.log('📋 Tenant ID from header:', tenantId);
+      // Prefer tenant from middleware; fallback to header and finally default in dev
+      const tenantId = (req.tenant?.tenantId as string)
+        || (req.headers['x-tenant-id'] as string)
+        || (process.env.NODE_ENV === 'development' ? (process.env.DEFAULT_TENANT_ID || 'default') : undefined);
+      if (!tenantId) {
+        return res.status(400).json({ success: false, message: 'Tenant ID is required' });
+      }
+      console.log('📋 Using tenant ID:', tenantId);
 
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
@@ -69,9 +77,7 @@ export class OrganizationProfileController {
       console.log('✅ Tenant found:', tenant.name);
 
       // Check if base currency can be changed (has transactions)
-      const hasTransactions = await prisma.entry.count({
-        where: { tenantId }
-      });
+      const hasTransactions = await prisma.entry.count({ where: { tenantId } });
 
       const canChangeCurrency = hasTransactions === 0;
 

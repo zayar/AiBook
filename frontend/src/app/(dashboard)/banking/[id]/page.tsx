@@ -88,7 +88,10 @@ const BankingDetailsPage: React.FC = () => {
   const params = useParams();
   const router = useRouter();
   const accountId = params.id as string;
-
+  
+  console.log('🔍 Component initialized with params:', params);
+  console.log('🔍 Account ID extracted:', accountId);
+  
   const [account, setAccount] = useState<BankAccount | null>(null);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [balanceSummary, setBalanceSummary] = useState<BalanceSummary | null>(null);
@@ -98,26 +101,101 @@ const BankingDetailsPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+  
+  // Ensure we're running on the client side
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Load account details and transactions
   const loadAccountData = async () => {
+    // Prevent multiple simultaneous calls
+    if (isLoadingData) {
+      console.log('🔍 Already loading data, skipping duplicate call');
+      return;
+    }
+    
     try {
+      setIsLoadingData(true);
       setLoading(true);
       
+      // Check if we're running in the browser
+      if (typeof window === 'undefined') {
+        console.log('🔍 Running on server side, skipping localStorage access');
+        return;
+      }
+      
+      // Check if accountId is properly set
+      if (!accountId) {
+        console.log('❌ No account ID provided');
+        return;
+      }
+      
       // Load payment methods to find the specific account
-      const token = localStorage.getItem('token');
-      const accountResponse = await fetch(`${API_URL}/banking/payment-methods`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': 'default',
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      const tenantId = localStorage.getItem('tenantId') || 'default';
+      
+      console.log('🔍 Debug info:', { token: token ? 'present' : 'missing', tenantId, accountId });
+      
+      // Try without authentication first to see if that's the issue
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-tenant-id': tenantId
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      console.log('🔍 Making request with headers:', headers);
+      
+      const accountResponse = await fetch(`${API_URL}/banking/payment-methods`, { headers });
+      
+      console.log('🔍 Response status:', accountResponse.status);
+      console.log('🔍 Response headers:', Object.fromEntries(accountResponse.headers.entries()));
 
       if (accountResponse.ok) {
         const accountData = await accountResponse.json();
+        console.log('🔍 Payment methods response:', accountData);
         const paymentMethods = accountData.paymentMethods || [];
-        const foundAccount = paymentMethods.find((acc: any) => acc.id === accountId);
+        console.log('🔍 Payment methods array:', paymentMethods);
+        console.log('🔍 Looking for account ID:', accountId);
+        console.log('🔍 Account ID type:', typeof accountId);
+        console.log('🔍 Account ID length:', accountId?.length);
+        
+        // Check each payment method ID for comparison
+        paymentMethods.forEach((acc: any, index: number) => {
+          console.log(`🔍 Payment method ${index}:`, {
+            id: acc.id,
+            idType: typeof acc.id,
+            idLength: acc.id?.length,
+            matches: acc.id === accountId,
+            strictEqual: acc.id === accountId,
+            includes: acc.id?.includes(accountId),
+            accountIdIncludes: accountId?.includes(acc.id)
+          });
+        });
+        
+        // Try multiple ways to find the account
+        let foundAccount = paymentMethods.find((acc: any) => acc.id === accountId);
+        
+        if (!foundAccount) {
+          // Try case-insensitive comparison
+          foundAccount = paymentMethods.find((acc: any) => 
+            acc.id?.toLowerCase() === accountId?.toLowerCase()
+          );
+        }
+        
+        if (!foundAccount) {
+          // Try partial match
+          foundAccount = paymentMethods.find((acc: any) => 
+            acc.id?.includes(accountId) || accountId?.includes(acc.id)
+          );
+        }
+        
+        console.log('🔍 Found account:', foundAccount);
         
         if (foundAccount) {
           const transformedAccount: BankAccount = {
@@ -152,29 +230,41 @@ const BankingDetailsPage: React.FC = () => {
             status: transformedAccount.unreconciledTransactions === 0 ? 'reconciled' : 'pending'
           });
         } else {
-          console.error('Account not found');
+          console.error('❌ Account not found');
+          console.error('❌ Available accounts:', paymentMethods.map((acc: any) => ({ id: acc.id, name: acc.name })));
+          console.error('❌ Looking for ID:', accountId);
         }
       } else {
-        console.error('Failed to fetch payment methods');
+        console.error('❌ Failed to fetch payment methods');
+        console.error('❌ Response status:', accountResponse.status);
+        console.error('❌ Response text:', await accountResponse.text());
       }
 
     } catch (error) {
-      console.error('Error loading account data:', error);
+      console.error('❌ Error loading account data:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        accountId,
+        API_URL
+      });
     } finally {
       setLoading(false);
+      setIsLoadingData(false);
     }
   };
 
   // Load transactions with enhanced API
   const loadTransactions = async (paymentMethodId: string) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      const tenantId = localStorage.getItem('tenantId') || 'default';
       const transactionResponse = await fetch(
         `${API_URL}/banking/payment-methods/${paymentMethodId}/transactions?page=1&limit=50&status=${filterStatus}${searchTerm ? `&search=${searchTerm}` : ''}`,
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Tenant-ID': 'default',
+            'x-tenant-id': tenantId,
             'Authorization': token ? `Bearer ${token}` : ''
           }
         }
@@ -252,10 +342,11 @@ const BankingDetailsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (accountId) {
+    console.log('🔍 useEffect triggered with accountId:', accountId, 'isClient:', isClient);
+    if (accountId && isClient) {
       loadAccountData();
     }
-  }, [accountId, filterStatus, searchTerm]);
+  }, [accountId, isClient]); // Only depend on accountId and isClient
 
   const formatCurrency = (amount: number, currency: string = 'MMK') => {
     return new Intl.NumberFormat('en-US', {
@@ -542,7 +633,8 @@ const BankingDetailsPage: React.FC = () => {
               <button
                 onClick={async () => {
                   try {
-                    const token = localStorage.getItem('token');
+                    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+                    const tenantId = localStorage.getItem('tenantId') || 'default';
                     
                     // Get all unreconciled transactions to auto-reconcile
                     const unreconciledTransactions = transactions
@@ -559,8 +651,8 @@ const BankingDetailsPage: React.FC = () => {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
-                        'X-Tenant-ID': 'default',
-                        'Authorization': token ? `Bearer ${token}` : ''
+                        'x-tenant-id': tenantId,
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                       },
                       body: JSON.stringify({
                         transactionIds: unreconciledTransactions,
@@ -593,7 +685,8 @@ const BankingDetailsPage: React.FC = () => {
               <button
                 onClick={async () => {
                   try {
-                    const token = localStorage.getItem('token');
+                    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+                    const tenantId = localStorage.getItem('tenantId') || 'default';
                     
                     // Get all unreconciled transactions to reconcile them
                     const unreconciledTransactions = transactions
@@ -610,8 +703,8 @@ const BankingDetailsPage: React.FC = () => {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
-                        'X-Tenant-ID': 'default',
-                        'Authorization': token ? `Bearer ${token}` : ''
+                        'x-tenant-id': tenantId,
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                       },
                       body: JSON.stringify({
                         transactionIds: unreconciledTransactions,

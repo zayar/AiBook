@@ -6,7 +6,7 @@ import {
   updateCustomer, 
   deleteCustomer,
   toggleCustomerStatus 
-} from '@/controllers/customerController';
+} from '../controllers/customerController';
 
 const router = Router();
 
