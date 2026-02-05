@@ -1,7 +1,7 @@
 'use client'
 
-import ModernCleanDashboard from '@/components/ModernCleanDashboard'
+import MarketingLandingPage from '@/components/MarketingLandingPage'
 
 export default function Home() {
-  return <ModernCleanDashboard />
+  return <MarketingLandingPage />
 }
